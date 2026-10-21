@@ -4,6 +4,7 @@ process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/
 process.env.REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 process.env.PORT = '0';
 process.env.ENABLE_WORKERS = 'false';
+process.env.CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY || 'sk_test_mock_clerk_secret_key_12345';
 
 import mongoose from 'mongoose';
 import { getRedisClient } from '../../shared/redis/index.js';
@@ -62,10 +63,9 @@ beforeEach(async () => {
 
   // Seed baseline data
   const testUser = await User.create({
+    clerkId: 'clerk_test_integration_user',
     email: 'test_integration@devtrack.app',
     username: 'test_integration',
-    passwordHash: 'hashed_password_mock',
-    githubId: 'mock_github_123',
     displayName: 'Test Integration User',
   });
 

@@ -18,6 +18,11 @@ name: Deploy to Production
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/workflows/pr-checks.yml'
+  workflow_dispatch:
 
 concurrency:
   group: deploy-production
@@ -33,14 +38,14 @@ jobs:
           RENDER_BACKEND_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}
         run: |
           if [ -z "$RENDER_BACKEND_DEPLOY_HOOK" ]; then
-            echo "❌ ERROR: RENDER_BACKEND_DEPLOY_HOOK secret is not set."
+            echo "::warning title=Render Deploy Skipped::RENDER_BACKEND_DEPLOY_HOOK secret is not configured."
+            echo "ℹ️  Deploy trigger skipped because RENDER_BACKEND_DEPLOY_HOOK is not set in repository secrets."
             echo ""
-            echo "   How to fix:"
+            echo "   How to configure:"
             echo "   1. Go to https://dashboard.render.com"
             echo "   2. Open devtrack-backend → Settings → Deploy Hook"
             echo "   3. Copy the URL"
-            echo "   4. Add it as a secret named RENDER_BACKEND_DEPLOY_HOOK in"
-            echo "      your GitHub repo: Settings → Secrets and variables → Actions"
+            echo "   4. Add it as a secret named RENDER_BACKEND_DEPLOY_HOOK in GitHub → Settings → Secrets → Actions"
             exit 1
           fi
 

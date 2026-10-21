@@ -12,14 +12,18 @@ describe('Queue Resilience and WorkerFactory Tests', () => {
   let queue: Queue;
 
   beforeAll(async () => {
-    // Connect to test database and redis
-    await mongoose.connect(process.env.TEST_MONGO_URI || 'mongodb://localhost:27017/devtrack-test');
+    // Connect to test database if not already connected
+    if (mongoose.connection.readyState === 0) {
+      await mongoose.connect(process.env.TEST_MONGO_URI || 'mongodb://localhost:27017/devtrack-test');
+    }
     queue = QueueRegistry.getOrCreateQueue(TEST_QUEUE);
   });
 
   afterAll(async () => {
     await QueueRegistry.closeAllQueues();
-    await mongoose.connection.close();
+    if (process.env.TEST_MONGO_URI) {
+      await mongoose.connection.close();
+    }
     await getRedisClient().quit();
   });
 

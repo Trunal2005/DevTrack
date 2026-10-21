@@ -1,19 +1,27 @@
 import { vi, beforeEach, beforeAll, afterAll, afterEach } from 'vitest';
 
+process.env.MONGOMS_MD5_CHECK = '0';
+
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 
 let mongoServer: MongoMemoryServer;
 
 beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create();
+  mongoServer = await MongoMemoryServer.create({
+    binary: {
+      version: '7.0.14',
+    },
+  });
   const mongoUri = mongoServer.getUri();
   await mongoose.connect(mongoUri);
 });
 
 afterAll(async () => {
   await mongoose.disconnect();
-  await mongoServer.stop();
+  if (mongoServer) {
+    await mongoServer.stop();
+  }
 });
 
 afterEach(async () => {
