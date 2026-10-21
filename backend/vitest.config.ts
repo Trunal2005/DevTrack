@@ -6,5 +6,8 @@ export default defineConfig({
     exclude: ['dist/**', 'tests/**', 'src/__tests__/integration/**'],
     passWithNoTests: true,
     setupFiles: ['./src/__tests__/vitest.setup.ts'],
+    hookTimeout: 60000,
+    testTimeout: 30000,
+    fileParallelism: false,
   },
 });

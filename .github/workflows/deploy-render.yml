@@ -16,3 +16,14 @@ name: Deploy to Render (Legacy – Superseded)
 
 on:
   workflow_dispatch:
+
+jobs:
+  disabled-notice:
+    name: Superseded Workflow Notice
+    runs-on: ubuntu-latest
+    steps:
+      - name: Informational Notice
+        run: |
+          echo "⚠️ This workflow has been superseded by deploy-production.yml"
+          echo "Please use deploy-production.yml or deploy-staging.yml instead."
+          exit 1
