@@ -32,10 +32,11 @@ const bulkUpdateSchema = z.object({
 router.get('/problems', authMiddleware, asyncHandler(controller.getProblems));
 router.get('/problems/:id', authMiddleware, asyncHandler(controller.getProblemById));
 router.post('/problems', authMiddleware, validateBody(problemCreateSchema), asyncHandler(controller.createProblem));
+// Static PATCH paths must precede /problems/:id to avoid being treated as IDs.
+router.patch('/problems/bulk-status', authMiddleware, validateBody(bulkUpdateSchema), asyncHandler(controller.bulkUpdateStatus));
 router.patch('/problems/:id', authMiddleware, validateBody(problemUpdateSchema), asyncHandler(controller.updateProblem));
 router.delete('/problems/:id', authMiddleware, asyncHandler(controller.deleteProblem));
 router.post('/problems/:id/favorite', authMiddleware, asyncHandler(controller.toggleFavorite));
-router.patch('/problems/bulk-status', authMiddleware, validateBody(bulkUpdateSchema), asyncHandler(controller.bulkUpdateStatus));
 router.get('/stats', authMiddleware, asyncHandler(controller.getStats));
 router.get('/dashboard', authMiddleware, asyncHandler(controller.getDashboard));
 router.get('/heatmap', authMiddleware, asyncHandler(controller.getHeatmap));
