@@ -1,52 +1,36 @@
 // src/__tests__/integration/sseHandshake.test.ts — Secure SSE Handshake Ticket Protocol Integration Test
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { createApp } from '../../index.js';
 import { orchestrator } from '../../shared/runtime/index.js';
+import { User } from '../../db/models/index.js';
 import type { Server } from 'http';
 import type { AddressInfo } from 'net';
+
+vi.mock('@clerk/backend', () => ({
+  verifyToken: vi.fn().mockImplementation(async (token: string) => {
+    if (token && token.startsWith('mock_valid_token_')) {
+      const clerkId = token.replace('mock_valid_token_', '');
+      return { sub: clerkId };
+    }
+    throw new Error('Invalid token');
+  }),
+}));
 
 let server: Server;
 let API_BASE: string;
 
 async function registerAndLoginUser() {
-  const rand = Math.floor(Math.random() * 1000000);
-  const testUser = {
-    email: `sse_sec_${rand}@devtrack.dev`,
-    username: `sse_sec_${rand}`,
-    password: 'TestPass123!',
-    displayName: `SSE Security Test User ${rand}`,
-  };
-
-  // Register
-  const regRes = await fetch(`${API_BASE}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(testUser),
-  });
-  if (!regRes.ok) {
-    throw new Error(`Register failed with status ${regRes.status}`);
+  const clerkId = 'clerk_test_integration_user';
+  let user = await User.findOne({ clerkId });
+  if (!user) {
+    user = await User.create({
+      clerkId,
+      email: 'test_integration@devtrack.app',
+      username: 'test_integration',
+      displayName: 'Test Integration User',
+    });
   }
-
-  // Login
-  const res = await fetch(`${API_BASE}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      emailOrUsername: testUser.email,
-      password: testUser.password,
-    }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`Authentication endpoints returned status code ${res.status}`);
-  }
-
-  const data = await res.json() as any;
-  const token = data.data?.tokens?.accessToken;
-  if (!token) {
-    throw new Error('Response did not contain a valid accessToken');
-  }
-  return token;
+  return `mock_valid_token_${clerkId}`;
 }
 
 async function testSseConnection(ticket: string): Promise<number> {
