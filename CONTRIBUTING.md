@@ -188,7 +188,18 @@ npm run test:unit
 npm run test:integration
 ```
 
-Integration tests require the relevant infrastructure, including MongoDB and Redis.
+Integration tests provision a fresh temporary MongoDB instance per test file using
+`mongodb-memory-server` (also used by the unit suite). Do not set `MONGODB_URI` in
+the shell or CI when running them: inherited URIs are rejected before connection,
+even if the database name contains `test`. The application `.env` URI is overridden
+before application modules load. Only the owned instance's fixtures are cleared;
+teardown stops that instance and removes its temporary files without dropping a
+database on a shared server. The first run may download MongoDB 7.0.14; an existing
+binary can be selected with `MONGOMS_SYSTEM_BINARY`.
+
+Redis is still required for full integration coverage. URI/ownership regression
+tests run without database infrastructure via `npm run test:safety` and are also
+included in `npm run test:unit`.
 
 ### Frontend
 

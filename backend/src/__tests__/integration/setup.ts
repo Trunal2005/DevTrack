@@ -1,19 +1,38 @@
-// Set environment variables BEFORE importing any application module
+import mongoose from 'mongoose';
+import { MongoMemoryServer } from 'mongodb-memory-server';
+import { beforeAll, afterAll, beforeEach } from 'vitest';
+import { createIntegrationDatabase } from './database.js';
+
+// Reject inherited application URIs before provisioning or connecting. The
+// fixture owns both a fresh MongoDB process and a unique database per test file.
+const database = await createIntegrationDatabase(
+  mongoose,
+  () => MongoMemoryServer.create({ binary: { version: '7.0.14' } }),
+  process.env.MONGODB_URI,
+);
+
+// Application config loads dotenv at import time. Set the owned URI before
+// dynamically importing any application modules, including models and Redis.
 process.env.NODE_ENV = 'test';
-process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/devtrack_test';
+process.env.MONGODB_URI = database.uri;
 process.env.REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 process.env.PORT = '0';
 process.env.ENABLE_WORKERS = 'false';
 process.env.CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY || 'sk_test_mock_clerk_secret_key_12345';
 
-import mongoose from 'mongoose';
-import { getRedisClient } from '../../shared/redis/index.js';
-import { logger } from '../../shared/logger.js';
-import { User, UserXp } from '../../db/models/index.js';
-import { beforeAll, afterAll, beforeEach } from 'vitest';
+afterAll(async () => {
+  try {
+    await database.close();
+  } finally {
+    if (process.env.MONGODB_URI === database.uri) delete process.env.MONGODB_URI;
+  }
+});
 
-const MONGODB_URI = process.env.MONGODB_URI;
-const REDIS_URL = process.env.REDIS_URL;
+const [{ getRedisClient }, { logger }, { User, UserXp }] = await Promise.all([
+  import('../../shared/redis/index.js'),
+  import('../../shared/logger.js'),
+  import('../../db/models/index.js'),
+]);
 
 beforeAll(async () => {
   // Silence logger during tests unless debugging
@@ -21,11 +40,6 @@ beforeAll(async () => {
     process.env.SILENT_LOGGING = 'true';
   }
 
-  // Connect to DB
-  if (mongoose.connection.readyState === 0) {
-    await mongoose.connect(MONGODB_URI);
-  }
-  
   // Test Redis connection with a timeout to avoid hangs if Redis is offline
   const redis = getRedisClient();
   try {
@@ -39,27 +53,13 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Drop database to ensure clean slate for next test suite
-  if (mongoose.connection.readyState === 1) {
-    await mongoose.connection.db?.dropDatabase();
-    await mongoose.disconnect();
-  }
-
   // Disconnect Redis
   const redis = getRedisClient();
   await redis.quit();
 });
 
 beforeEach(async () => {
-  // Clean all collections before each test
-  if (mongoose.connection.readyState === 1) {
-    const collections = await mongoose.connection.db?.collections();
-    if (collections) {
-      for (const collection of collections) {
-        await collection.deleteMany({});
-      }
-    }
-  }
+  await database.clear();
 
   // Seed baseline data
   const testUser = await User.create({
