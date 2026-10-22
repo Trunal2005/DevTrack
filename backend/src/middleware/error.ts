@@ -61,8 +61,11 @@ export function errorHandler(
     return;
   }
 
-  // Handle Mongoose CastError (invalid ObjectId)
-  if (err.name === 'CastError') {
+  // BSONError also covers server-side serialization faults, so only translate
+  // the ObjectId constructor's invalid-string error into a client error.
+  const isInvalidObjectId = err.name === 'BSONError' &&
+    err.message.startsWith('input must be a 24 character hex string');
+  if (err.name === 'CastError' || isInvalidObjectId) {
     commonErrors.badRequest(res, 'Invalid ID format');
     return;
   }
