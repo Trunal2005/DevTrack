@@ -154,12 +154,45 @@ function saveToStorage(notifications: Notification[]) {
   try {
     const toSave = notifications.slice(0, PERSIST_COUNT);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-  } catch (err) {
+  } catch {
     // Ignore storage errors
   }
 }
 
 const initialNotifications = loadFromStorage();
+
+export const THEME_STORAGE_KEY = 'devtrack_theme';
+
+export function getInitialTheme(): 'light' | 'dark' | 'system' {
+  if (typeof window === 'undefined') return 'system';
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === 'light' || saved === 'dark' || saved === 'system') {
+      return saved;
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return 'system';
+}
+
+export function applyTheme(theme: 'light' | 'dark' | 'system') {
+  if (typeof window === 'undefined') return;
+  const root = document.documentElement;
+  const isDark =
+    theme === 'system'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : theme === 'dark';
+
+  root.classList.toggle('dark', isDark);
+  root.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  root.style.colorScheme = isDark ? 'dark' : 'light';
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Main Consolidated Store
@@ -171,16 +204,10 @@ export const useAppStateStore = create<AppState>()(
       sidebarCollapsed: false,
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
-      theme: 'dark',
+      theme: getInitialTheme(),
       setTheme: (theme) => {
         set({ theme });
-        const root = document.documentElement;
-        if (theme === 'system') {
-          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          root.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
-        } else {
-          root.setAttribute('data-theme', theme);
-        }
+        applyTheme(theme);
       },
       activeModal: null,
       modalProps: {},

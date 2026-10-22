@@ -131,6 +131,10 @@ export const SettingsWorkspace: React.FC = () => {
       });
     });
 
+    if (!flattened['appearance.theme']) {
+      flattened['appearance.theme'] = useUIStore.getState().theme;
+    }
+
     setLocalValues(flattened);
     setHasChanges(false);
   }, [settings]);
@@ -157,6 +161,9 @@ export const SettingsWorkspace: React.FC = () => {
   const handleFieldChange = (id: string, value: unknown) => {
     setLocalValues(prev => ({ ...prev, [id]: value }));
     setHasChanges(true);
+    if (id === 'appearance.theme' && (value === 'light' || value === 'dark' || value === 'system')) {
+      useUIStore.getState().setTheme(value);
+    }
   };
 
   const handleCommandPaletteNavigate = (sectionId: string, fieldId?: string) => {

@@ -131,7 +131,7 @@ const DashboardPage: React.FC = () => {
     <ErrorBoundary>
       <div className="flex flex-col gap-10 max-w-[1600px] mx-auto w-full dt-stagger pb-16 px-4 lg:px-8 relative">
         {/* Calm Operational Background */}
-        <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10 bg-[#FAFAFC]" />
+        <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10 bg-[#FAFAFC] dark:bg-[#09090B] transition-colors duration-300" />
 
         {/* ==========================================
             SECTION 1 — HERO HEADER

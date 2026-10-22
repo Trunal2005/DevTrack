@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { ThemeToggle } from '../shared/ThemeToggle';
 
 export const Navbar: React.FC = () => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -65,6 +66,7 @@ export const Navbar: React.FC = () => {
               </motion.a>
             ))}
             <div className="ml-4 flex items-center gap-3">
+              <ThemeToggle />
               <motion.button
                 onClick={() => navigate('/login')}
                 className="px-4 py-2 text-sm font-bold text-dt-textSecondary hover:text-dt-text transition-colors"

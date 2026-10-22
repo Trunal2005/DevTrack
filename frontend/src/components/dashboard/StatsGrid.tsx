@@ -83,16 +83,17 @@ export const StatsGrid: React.FC<StatsGridProps> = ({ stats, platformStats }) =>
 
     return platformStats
       .map((p) => {
-        const isGithub = p.platformName.toLowerCase() === 'github';
+        const platName = p.platformName || (p as any).platform || '';
+        const isGithub = platName.toLowerCase() === 'github';
         const hasData = (p.totalSolved || 0) > 0;
         return {
-          name: isGithub ? 'GitHub' : p.platformName.charAt(0).toUpperCase() + p.platformName.slice(1),
+          name: isGithub ? 'GitHub' : platName ? platName.charAt(0).toUpperCase() + platName.slice(1) : 'Platform',
           problems: p.totalSolved || 0,
           label: isGithub ? 'Repos' : 'Problems',
           rating: p.rating ? p.rating.toString() : '—',
           ratingLabel: isGithub ? 'Stars' : 'Rating',
-          logo: getPlatformLogo(p.platformName),
-          color: getPlatformColor(p.platformName),
+          logo: getPlatformLogo(platName),
+          color: getPlatformColor(platName),
           connected: hasData,
         };
       });
