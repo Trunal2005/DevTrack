@@ -18,42 +18,51 @@ const router = Router();
 // All routes require authentication
 router.use(authMiddleware);
 
+// All writes retain the processing budget. Credibility also reruns orchestration
+// despite using GET; the other reads only load saved state.
+router.use((req, res, next) => {
+  const read = req.method === 'GET' || req.method === 'HEAD';
+  return read && !/^\/credibility\/?$/i.test(req.path)
+    ? rateLimiters.resumeRead(req, res, next)
+    : rateLimiters.resume(req, res, next);
+});
+
 // Resume Profile routes
-router.get('/profile', rateLimiters.resumePolling, controller.getProfile);
-router.put('/profile', rateLimiters.resumeProcessing, validateRequest({ body: UpdateResumeProfileSchema }), controller.updateProfile);
+router.get('/profile', controller.getProfile);
+router.put('/profile', validateRequest({ body: UpdateResumeProfileSchema }), controller.updateProfile);
 
 // Resume Generation
-router.post('/generate', rateLimiters.resumeProcessing, controller.generateResume);
+router.post('/generate', controller.generateResume);
 
 // Variant routes
-router.post('/variants', rateLimiters.resumeProcessing, validateRequest({ body: GenerateVariantSchema }), controller.generateVariant);
-router.get('/variants', rateLimiters.resumePolling, controller.getVariants);
-router.get('/variants/:variantId', rateLimiters.resumePolling, controller.getVariant);
+router.post('/variants', validateRequest({ body: GenerateVariantSchema }), controller.generateVariant);
+router.get('/variants', controller.getVariants);
+router.get('/variants/:variantId', controller.getVariant);
 
 // ATS Analysis routes
-router.post('/ats-analysis', rateLimiters.resumeProcessing, validateRequest({ body: AnalyzeATSSchema }), controller.analyzeATS);
-router.get('/ats-analysis', rateLimiters.resumePolling, controller.getATSAnalyses);
+router.post('/ats-analysis', validateRequest({ body: AnalyzeATSSchema }), controller.analyzeATS);
+router.get('/ats-analysis', controller.getATSAnalyses);
 
 // Evidence Claim routes
-router.post('/evidence-claims', rateLimiters.resumeProcessing, validateRequest({ body: CreateEvidenceClaimSchema }), controller.createEvidenceClaim);
-router.get('/evidence-claims', rateLimiters.resumePolling, controller.getEvidenceClaims);
+router.post('/evidence-claims', validateRequest({ body: CreateEvidenceClaimSchema }), controller.createEvidenceClaim);
+router.get('/evidence-claims', controller.getEvidenceClaims);
 
 // Export routes
-router.post('/export', rateLimiters.resumeProcessing, validateRequest({ body: ExportResumeSchema }), controller.exportResume);
-router.get('/export-history', rateLimiters.resumePolling, controller.getExportHistory);
+router.post('/export', validateRequest({ body: ExportResumeSchema }), controller.exportResume);
+router.get('/export-history', controller.getExportHistory);
 
 // Version History
-router.get('/versions', rateLimiters.resumePolling, controller.getVersionHistory);
+router.get('/versions', controller.getVersionHistory);
 
 // Credibility Analysis
-router.get('/credibility', rateLimiters.resumePolling, controller.getCredibilityAnalysis);
+router.get('/credibility', controller.getCredibilityAnalysis);
 
 // Intelligence Report Dossier
-router.post('/report', rateLimiters.resumeProcessing, validateRequest({ body: GenerateReportSchema }), controller.generateReport);
-router.get('/report/:sessionId', rateLimiters.resumePolling, controller.getReport);
+router.post('/report', validateRequest({ body: GenerateReportSchema }), controller.generateReport);
+router.get('/report/:sessionId', controller.getReport);
 
 // Projects and Skills
-router.get('/projects', rateLimiters.resumePolling, controller.getProjects);
-router.get('/skills', rateLimiters.resumePolling, controller.getSkills);
+router.get('/projects', controller.getProjects);
+router.get('/skills', controller.getSkills);
 
 export default router;

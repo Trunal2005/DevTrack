@@ -21,6 +21,7 @@ import { getWorkerStatus, getXpWorkerStatus } from './shared/jobs/index.js';
 import { orchestrator } from './shared/runtime/index.js';
 import { getInfrastructureState } from './shared/runtime/infrastructureRegistry.js';
 import routes from './routes/index.js';
+import { mountApiRoutes } from './routes/mount.js';
 
 const require = createRequire(import.meta.url);
 const { version: APP_VERSION } = require('../package.json') as { version: string };
@@ -68,7 +69,7 @@ export async function createApp(): Promise<express.Express> {
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    exposedHeaders: ['Content-Length', 'X-Request-ID'],
+    exposedHeaders: ['Content-Length', 'X-Request-ID', 'Retry-After'],
   }));
 
   app.use(morgan(env.IS_DEV ? 'dev' : 'combined'));
@@ -80,17 +81,7 @@ export async function createApp(): Promise<express.Express> {
   setupHealthEndpoints(app, getRedisHealth, getWorkerStatus, getXpWorkerStatus, getOrCreateQueue, QueueNames, eventBus, syncState, getInfrastructureState);
 
   // Phase 3: API routes
-  // Backward compatibility alias: mount on legacy /api path with deprecation warning
-  app.use('/api', (req, res, next) => {
-    // Only warn if they strictly use /api without /v1
-    if (!req.originalUrl.startsWith('/api/v1')) {
-      res.setHeader('X-API-Deprecation-Warning', 'The unversioned /api endpoints are deprecated and will be removed in a future release. Please migrate to /api/v1.');
-    }
-    next();
-  }, routes);
-
-  // Primary versioned API path
-  app.use(API_BASE_PATH, routes);
+  mountApiRoutes(app, routes);
 
   // Phase 4: Error handlers
   app.use(notFoundHandler);

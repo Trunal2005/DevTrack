@@ -15,18 +15,18 @@ router.use(authMiddleware);
  * POST /api/resume/upload
  * Upload a resume file (PDF, DOCX, TXT, MD)
  */
-router.post('/upload', rateLimiters.resumeProcessing, uploadSingle, validateUpload, controller.uploadResume);
+router.post('/upload', rateLimiters.resume, uploadSingle, validateUpload, controller.uploadResume);
 
 /**
  * GET /api/resume/session/:id
  * Get resume session by ID
  */
-router.get('/session/:id', rateLimiters.resumePolling, controller.getSession);
+router.get('/session/:id', rateLimiters.resumeRead, controller.getSession);
 
 /**
  * GET /api/resume/session/:id/status
  * Get session processing status
  */
-router.get('/session/:id/status', rateLimiters.resumePolling, controller.getSessionStatus);
+router.get('/session/:id/status', rateLimiters.resumeRead, controller.getSessionStatus);
 
 export default router;

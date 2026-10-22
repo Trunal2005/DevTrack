@@ -1,6 +1,6 @@
 // src/routes/index.ts - Route composition
 import { Router } from 'express';
-import { isResumePollingRequest, rateLimit } from '../middleware/rateLimit.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 import { env } from '../config/index.js';
 import { authRoutes } from '../modules/auth/index.js';
 import { dashboardRoutes } from '../modules/dashboard/index.js';
@@ -35,12 +35,19 @@ const globalRateLimit = rateLimit({
   windowMs: env.RATE_LIMIT_WINDOW_MS,
   maxRequests: env.RATE_LIMIT_MAX_REQUESTS,
   message: 'Too many requests. Please slow down.',
-  // These authenticated reads have a dedicated Redis-backed polling budget.
-  skip: isResumePollingRequest,
 });
 
-// Apply global rate limiting to all routes
-router.use(globalRateLimit);
+// Polling has a dedicated authenticated budget. Keep an IP flood guard before
+// auth without exhausting the general 100-request/15-minute API budget.
+router.use((req, res, next) => {
+  const pollingRead = (req.method === 'GET' || req.method === 'HEAD') && (
+    /^\/resume\/session\/[^/]+(?:\/status)?\/?$/i.test(req.path)
+    || /^\/resume-intelligence\/report\/[^/]+\/?$/i.test(req.path)
+  );
+  return pollingRead
+    ? rateLimiters.resumeReadIngress(req, res, next)
+    : globalRateLimit(req, res, next);
+});
 
 // Auth routes (no auth required for login/register)
 router.use('/auth', authRoutes);

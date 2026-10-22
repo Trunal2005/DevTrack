@@ -1,19 +1,25 @@
 import type { ApiError } from '../../../types/api.types';
 
 export const RESUME_POLL_INTERVAL_MS = 1_500;
-export const MAX_RESUME_RETRY_DELAY_MS = 60_000;
+const MAX_BACKOFF_MS = 60_000;
 
-export function getResumePollingDelay(error: unknown): number {
-  const apiError = error as Partial<ApiError> | null;
-  if (apiError?.statusCode !== 429) return RESUME_POLL_INTERVAL_MS;
+export function isRateLimited(error: unknown): boolean {
+  return (error as Partial<ApiError> | null)?.statusCode === 429;
+}
 
-  const retryAfterSeconds = Number(apiError.retryAfter);
-  if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds < 0) {
-    return RESUME_POLL_INTERVAL_MS;
+export function getResumePollingDelay(error: unknown, failures: number): number {
+  const backoff = Math.min(MAX_BACKOFF_MS, 3_000 * 2 ** Math.min(Math.max(0, failures - 1), 5));
+  if (!isRateLimited(error)) return backoff;
+
+  const retryAfter = (error as Partial<ApiError>).retryAfter;
+  let serverDelay = 0;
+  if (typeof retryAfter === 'number' || (typeof retryAfter === 'string' && retryAfter.trim())) {
+    const seconds = Number(retryAfter);
+    serverDelay = Number.isFinite(seconds)
+      ? Math.max(0, seconds * 1000)
+      : typeof retryAfter === 'string' ? Math.max(0, Date.parse(retryAfter) - Date.now()) : 0;
   }
-
-  return Math.min(
-    MAX_RESUME_RETRY_DELAY_MS,
-    Math.max(RESUME_POLL_INTERVAL_MS, retryAfterSeconds * 1000)
-  );
+  // The exponential fallback is capped, but Retry-After is a server minimum.
+  // In particular, a ten-minute processing block must not retry after one minute.
+  return Number.isFinite(serverDelay) ? Math.max(backoff, serverDelay) : backoff;
 }

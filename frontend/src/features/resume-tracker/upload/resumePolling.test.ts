@@ -1,22 +1,27 @@
-import { describe, expect, it } from 'vitest';
-import {
-  getResumePollingDelay,
-  MAX_RESUME_RETRY_DELAY_MS,
-  RESUME_POLL_INTERVAL_MS,
-} from './resumePolling';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { getResumePollingDelay } from './resumePolling';
 
-describe('getResumePollingDelay', () => {
-  it('uses the normal interval for non-rate-limit failures', () => {
-    expect(getResumePollingDelay({ statusCode: 503 })).toBe(RESUME_POLL_INTERVAL_MS);
+afterEach(() => vi.restoreAllMocks());
+
+describe('resume polling retry delays', () => {
+  it('honors server seconds including a ten-minute processing block', () => {
+    expect(getResumePollingDelay({ statusCode: 429, retryAfter: '30' }, 1)).toBe(30_000);
+    expect(getResumePollingDelay({ statusCode: 429, retryAfter: 600 }, 1)).toBe(600_000);
   });
 
-  it('honors Retry-After seconds from normalized 429 responses', () => {
-    expect(getResumePollingDelay({ statusCode: 429, retryAfter: 30 })).toBe(30_000);
+  it('honors HTTP dates', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-22T00:00:00Z'));
+    expect(getResumePollingDelay({ statusCode: 429, retryAfter: 'Thu, 22 Oct 2026 00:02:00 GMT' }, 1)).toBe(120_000);
   });
 
-  it('bounds invalid, short, and excessive retry delays', () => {
-    expect(getResumePollingDelay({ statusCode: 429, retryAfter: 'invalid' })).toBe(RESUME_POLL_INTERVAL_MS);
-    expect(getResumePollingDelay({ statusCode: 429, retryAfter: 0.1 })).toBe(RESUME_POLL_INTERVAL_MS);
-    expect(getResumePollingDelay({ statusCode: 429, retryAfter: 600 })).toBe(MAX_RESUME_RETRY_DELAY_MS);
+  it.each([undefined, '', 'invalid', -1, 0, Infinity])('backs off for an unusable Retry-After value %s', retryAfter => {
+    expect(getResumePollingDelay({ statusCode: 429, retryAfter }, 1)).toBe(3_000);
+    expect(getResumePollingDelay({ statusCode: 429, retryAfter }, 2)).toBe(6_000);
+    expect(getResumePollingDelay({ statusCode: 429, retryAfter }, 100)).toBe(60_000);
+  });
+
+  it('bounds retries for network/server failures too', () => {
+    expect(getResumePollingDelay(new Error('offline'), 1)).toBe(3_000);
+    expect(getResumePollingDelay({ statusCode: 503 }, 100)).toBe(60_000);
   });
 });

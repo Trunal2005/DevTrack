@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { useSse } from '../../../hooks/useSse';
@@ -38,6 +38,8 @@ interface ATSScanTransitionProps {
 export const ATSScanTransition: React.FC<ATSScanTransitionProps> = ({ sessionId, onComplete }) => {
   const [currentStageIdx, setCurrentStageIdx] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
 
   // SSE Real-time Updates
   useSse({
@@ -52,7 +54,7 @@ export const ATSScanTransition: React.FC<ATSScanTransitionProps> = ({ sessionId,
 
         if (status === 'completed' || stage === 'COMPLETED') {
           setTimeout(() => {
-            onComplete();
+            onCompleteRef.current();
           }, 800);
         } else if (status === 'failed' || stage === 'FAILED') {
           setErrorMsg(errors?.[0] || 'Orchestration stage execution failed.');
@@ -65,6 +67,7 @@ export const ATSScanTransition: React.FC<ATSScanTransitionProps> = ({ sessionId,
   useEffect(() => {
     let active = true;
     let timeoutId: ReturnType<typeof setTimeout>;
+    let failures = 0;
 
     const pollStatus = async () => {
       let nextPollDelay = RESUME_POLL_INTERVAL_MS;
@@ -72,6 +75,7 @@ export const ATSScanTransition: React.FC<ATSScanTransitionProps> = ({ sessionId,
       try {
         const response = await axiosClient.get(`/resume/session/${sessionId}/status`);
         if (!active) return;
+        failures = 0;
         
         const data = response.data?.data;
         if (data) {
@@ -83,7 +87,7 @@ export const ATSScanTransition: React.FC<ATSScanTransitionProps> = ({ sessionId,
 
           if (currentStage === 'COMPLETED') {
             setTimeout(() => {
-              if (active) onComplete();
+              if (active) onCompleteRef.current();
             }, 800);
             return; // stop polling
           } else if (currentStage === 'FAILED') {
@@ -92,7 +96,8 @@ export const ATSScanTransition: React.FC<ATSScanTransitionProps> = ({ sessionId,
           }
         }
       } catch (err) {
-        nextPollDelay = getResumePollingDelay(err);
+        if (!active) return;
+        nextPollDelay = getResumePollingDelay(err, ++failures);
         console.warn('[ATSScanTransition] Poll fallback failed', err);
       }
 
@@ -108,7 +113,7 @@ export const ATSScanTransition: React.FC<ATSScanTransitionProps> = ({ sessionId,
       active = false;
       clearTimeout(timeoutId);
     };
-  }, [sessionId, onComplete]);
+  }, [sessionId]);
 
   if (errorMsg) {
     return (

@@ -12,17 +12,9 @@ interface RateLimitOptions {
   windowMs: number;     // Time window in ms
   maxRequests: number;  // Max requests per window
   message?: string;
-  skip?: (req: Request) => boolean;
 }
 
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
-
-export function isResumePollingRequest(req: Pick<Request, 'method' | 'path'>): boolean {
-  if (req.method !== 'GET') return false;
-
-  return /^\/resume\/session\/[^/]+(?:\/status)?\/?$/.test(req.path)
-    || /^\/resume-intelligence\/report\/[^/]+\/?$/.test(req.path);
-}
 
 // Cleanup stale entries every 5 minutes
 setInterval(() => {
@@ -33,14 +25,9 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 export function rateLimit(options: RateLimitOptions) {
-  const { windowMs, maxRequests, message = 'Too many requests. Please try again later.', skip } = options;
+  const { windowMs, maxRequests, message = 'Too many requests. Please try again later.' } = options;
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (skip?.(req)) {
-      next();
-      return;
-    }
-
     if (process.env.NODE_ENV === 'development') {
       next();
       return;
