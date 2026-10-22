@@ -299,9 +299,14 @@ class EventBus extends EventEmitter {
 
   // ─── Redis pub/sub for horizontal scaling ─────────────────────────────────
   private async initRedisPubSub(): Promise<void> {
+    const redisUrl = process.env.REDIS_URL;
+    if (!redisUrl) {
+      logger.info('[sse] REDIS_URL not set — operating in local in-memory SSE mode (Redis Pub/Sub disabled)');
+      return;
+    }
+
     try {
       const Redis = (await import('ioredis')).default;
-      const redisUrl = process.env.REDIS_URL;
       const connectionOptions: any = {
         lazyConnect: true,
         family: 0,
@@ -312,16 +317,37 @@ class EventBus extends EventEmitter {
         }
       };
 
-      if (!redisUrl) {
-        connectionOptions.host = process.env.REDIS_HOST || 'localhost';
-        connectionOptions.port = parseInt(process.env.REDIS_PORT || '6379', 10);
-        connectionOptions.password = process.env.REDIS_PASSWORD || undefined;
-      }
-
       // Persistent subscriber
-      const subscriber = redisUrl 
-        ? new (Redis as any)(redisUrl, connectionOptions)
-        : new (Redis as any)(connectionOptions);
+      const subscriber = new (Redis as any)(redisUrl, connectionOptions);
+      let isSubscribed = false;
+      let subscriptionPromise: Promise<void> | null = null;
+
+      const ensureSubscribed = async (): Promise<void> => {
+        if (isSubscribed) return;
+        if (subscriptionPromise) {
+          return subscriptionPromise;
+        }
+
+        subscriptionPromise = (async () => {
+          try {
+            await (subscriber as any).subscribe(SSE_CHANNEL);
+            isSubscribed = true;
+            logger.info('[sse-redis] Subscribed to SSE channel', { channel: SSE_CHANNEL });
+          } catch (err) {
+            isSubscribed = false;
+            logger.warn('[sse-redis] Failed to subscribe to SSE channel', {
+              channel: SSE_CHANNEL,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            throw err;
+          } finally {
+            subscriptionPromise = null;
+          }
+        })();
+
+        return subscriptionPromise;
+      };
+
       (subscriber as any).on('message', (_channel: string, message: string) => {
         try {
           const event = JSON.parse(message) as SseEvent;
@@ -330,22 +356,37 @@ class EventBus extends EventEmitter {
           logger.warn('[sse] Failed to parse Redis message', { error: err });
         }
       });
+
       (subscriber as any).on('error', (err: Error) => {
         logger.error('[sse-redis] Subscriber error', err);
+      });
+
+      (subscriber as any).on('ready', () => {
+        logger.info('[sse-redis] Subscriber connection ready');
+        // Handle late connect or reconnect if initial setup subscribe was not established
+        void ensureSubscribed().catch(() => {
+          // Warning logged with context inside ensureSubscribed
+        });
       });
 
       await (subscriber as any).connect().catch((err: unknown) => {
         logger.warn('[sse-redis] Subscriber connect failed', { error: err instanceof Error ? err.message : String(err) });
       });
-      await (subscriber as any).subscribe(SSE_CHANNEL);
+
+      if ((subscriber as any).status === 'ready' && !isSubscribed) {
+        await ensureSubscribed().catch(() => {
+          // Warning logged with context inside ensureSubscribed
+        });
+      }
       this.redisSubscriber = subscriber as any;
 
       // Shared singleton publisher
-      const publisher = redisUrl 
-        ? new (Redis as any)(redisUrl, connectionOptions)
-        : new (Redis as any)(connectionOptions);
+      const publisher = new (Redis as any)(redisUrl, connectionOptions);
       (publisher as any).on('error', (err: Error) => {
         logger.error('[sse-redis] Publisher error', err);
+      });
+      (publisher as any).on('ready', () => {
+        logger.info('[sse-redis] Publisher connection ready');
       });
       await (publisher as any).connect().catch((err: unknown) => {
         logger.warn('[sse-redis] Publisher connect failed', { error: err instanceof Error ? err.message : String(err) });
@@ -358,8 +399,15 @@ class EventBus extends EventEmitter {
     }
   }
 
+  hasRedisPubSub(): boolean {
+    return Boolean(
+      (this.redisSubscriber as any)?.status === 'ready' &&
+      (this.redisPublisher as any)?.status === 'ready'
+    );
+  }
+
   private async publishToRedis(event: SseEvent): Promise<void> {
-    if (getRedisHealth().status !== 'connected') {
+    if (!process.env.REDIS_URL || getRedisHealth().status !== 'connected') {
       return;
     }
     try {
@@ -955,9 +1003,26 @@ class EventBus extends EventEmitter {
       client.destroy();
     }
     this.clients.clear();
+    if (this.redisSubscriber) {
+      try {
+        (this.redisSubscriber as any).disconnect();
+      } catch {
+        // ignore
+      }
+      this.redisSubscriber = null;
+    }
+    if (this.redisPublisher) {
+      try {
+        (this.redisPublisher as any).disconnect();
+      } catch {
+        // ignore
+      }
+      this.redisPublisher = null;
+    }
     logger.info('[sse] EventBus shutdown', { event: 'sse_shutdown' });
   }
 }
-// Module-level singleton
+// Module-level singleton & class export
+export { EventBus };
 export const eventBus = new EventBus();
 export default eventBus;
