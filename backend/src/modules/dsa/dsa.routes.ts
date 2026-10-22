@@ -25,7 +25,9 @@ const problemUpdateSchema = z.object({
 });
 
 const bulkUpdateSchema = z.object({
-  problemIds: z.array(z.string()),
+  problemIds: z.array(
+    z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid problem ID format'),
+  ).min(1, 'At least one problem ID is required'),
   status: z.enum(['unsolved', 'attempted', 'solved', 'revisit']),
 });
 
