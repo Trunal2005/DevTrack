@@ -1,6 +1,6 @@
 // src/routes/index.ts - Route composition
 import { Router } from 'express';
-import { rateLimit } from '../middleware/rateLimit.js';
+import { isResumePollingRequest, rateLimit } from '../middleware/rateLimit.js';
 import { env } from '../config/index.js';
 import { authRoutes } from '../modules/auth/index.js';
 import { dashboardRoutes } from '../modules/dashboard/index.js';
@@ -35,6 +35,8 @@ const globalRateLimit = rateLimit({
   windowMs: env.RATE_LIMIT_WINDOW_MS,
   maxRequests: env.RATE_LIMIT_MAX_REQUESTS,
   message: 'Too many requests. Please slow down.',
+  // These authenticated reads have a dedicated Redis-backed polling budget.
+  skip: isResumePollingRequest,
 });
 
 // Apply global rate limiting to all routes
@@ -65,8 +67,8 @@ router.use('/onboarding', onboardingRoutes);
 router.use('/daily-challenge', dailyChallengeRoutes);
 router.use('/coaching', rateLimiters.ai, coachingRoutes);
 router.use('/readiness', readinessRoutes);
-router.use('/resume', rateLimiters.resume, uploadRoutes);
-router.use('/resume-intelligence', rateLimiters.resume, resumeIntelligenceRoutes);
+router.use('/resume', uploadRoutes);
+router.use('/resume-intelligence', resumeIntelligenceRoutes);
 router.use('/recommendations', rateLimiters.ai, recommendationRoutes);
 router.use('/analytics', analyticsRoutes);
 

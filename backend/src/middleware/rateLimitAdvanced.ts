@@ -72,6 +72,13 @@ const ENDPOINT_CONFIGS: Record<string, RateLimitConfig> = {
     blockDurationMs: 600_000, // 10 minute block
     enableBurstHandling: false,
   },
+  resumePolling: {
+    windowMs: 300_000, // 5 minutes
+    maxRequests: 240, // Supports 1.5 second polling with headroom
+    keyPrefix: 'rl:resume-polling',
+    blockDurationMs: 30_000,
+    enableBurstHandling: true,
+  },
   default: {
     windowMs: 60_000,
     maxRequests: 100,
@@ -139,7 +146,7 @@ export function createRateLimiter(endpointType: string) {
 
     // Calculate reset time
     const ttl = await redis.ttl(key);
-    const resetAt = now + (ttl > 0 ? ttl : config.windowMs);
+    const resetAt = now + (ttl > 0 ? ttl * 1000 : config.windowMs);
 
     // Check if over limit
     if (currentCount > config.maxRequests) {
@@ -209,6 +216,8 @@ export const rateLimiters = {
   ai: createRateLimiter('ai'),
   embedding: createRateLimiter('embedding'),
   resume: createRateLimiter('resume'),
+  resumeProcessing: createRateLimiter('resume'),
+  resumePolling: createRateLimiter('resumePolling'),
   analytics: createRateLimiter('analytics'),
   default: createRateLimiter('default'),
 };

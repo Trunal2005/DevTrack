@@ -42,6 +42,7 @@ export interface ApiError {
   code: string;
   statusCode: number;
   timestamp: string;
+  retryAfter?: number;
   details?: Record<string, string[]>;
 }
 

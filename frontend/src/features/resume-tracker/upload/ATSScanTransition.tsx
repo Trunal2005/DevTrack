@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { useSse } from '../../../hooks/useSse';
 import axiosClient from '../../../utils/axiosClient';
+import { getResumePollingDelay, RESUME_POLL_INTERVAL_MS } from './resumePolling';
 
 const SCAN_STAGES = [
   'Uploading Document...',
@@ -66,6 +67,8 @@ export const ATSScanTransition: React.FC<ATSScanTransitionProps> = ({ sessionId,
     let timeoutId: ReturnType<typeof setTimeout>;
 
     const pollStatus = async () => {
+      let nextPollDelay = RESUME_POLL_INTERVAL_MS;
+
       try {
         const response = await axiosClient.get(`/resume/session/${sessionId}/status`);
         if (!active) return;
@@ -89,11 +92,12 @@ export const ATSScanTransition: React.FC<ATSScanTransitionProps> = ({ sessionId,
           }
         }
       } catch (err) {
+        nextPollDelay = getResumePollingDelay(err);
         console.warn('[ATSScanTransition] Poll fallback failed', err);
       }
 
       if (active) {
-        timeoutId = setTimeout(pollStatus, 1500);
+        timeoutId = setTimeout(pollStatus, nextPollDelay);
       }
     };
 

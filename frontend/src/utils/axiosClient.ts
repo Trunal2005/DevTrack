@@ -88,6 +88,10 @@ axiosClient.interceptors.response.use(
     }
 
     // Normalize error for consumers
+    const retryAfterHeader = error.response?.headers?.['retry-after'];
+    const retryAfterValue = error.response?.data?.retryAfter ?? retryAfterHeader;
+    const retryAfter = Number(retryAfterValue);
+
     const normalized: ApiError = {
       success: false,
       message:
@@ -97,6 +101,7 @@ axiosClient.interceptors.response.use(
       code: error.response?.data?.code || 'UNKNOWN_ERROR',
       statusCode: error.response?.status || 500,
       timestamp: new Date().toISOString(),
+      ...(Number.isFinite(retryAfter) && retryAfter >= 0 ? { retryAfter } : {}),
       details: error.response?.data?.details,
     };
 
