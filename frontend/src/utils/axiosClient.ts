@@ -88,6 +88,7 @@ axiosClient.interceptors.response.use(
     }
 
     // Normalize error for consumers
+    const retryAfter = error.response?.headers['retry-after'] ?? error.response?.data?.retryAfter;
     const normalized: ApiError = {
       success: false,
       message:
@@ -96,6 +97,7 @@ axiosClient.interceptors.response.use(
         'An unexpected error occurred',
       code: error.response?.data?.code || 'UNKNOWN_ERROR',
       statusCode: error.response?.status || 500,
+      retryAfter: typeof retryAfter === 'string' || typeof retryAfter === 'number' ? retryAfter : undefined,
       timestamp: new Date().toISOString(),
       details: error.response?.data?.details,
     };

@@ -85,6 +85,24 @@ DevTrack uses **Clerk** for authentication — not custom JWT.
 
 Protected routes use `authMiddleware`. Admin and ops routes use `adminMiddleware` / `opsAuditorMiddleware`.
 
+Resume limits run after authentication: writes and `GET /resume-intelligence/credibility`
+(which reruns orchestration) share five processing requests per five minutes per user.
+Saved-state reads have a separate 120-request/minute user budget. Session/status and
+saved-report polling use a 600-request/minute IP ingress guard instead of the general
+100-request/15-minute API guard, so ordinary 1.5-second polling can continue through
+completion. The IP guard also covers rejected authentication attempts. Processing
+abuse retains its ten-minute block; read floods receive a 30-second block.
+
+The resume client honors `Retry-After` seconds or HTTP dates for status polling.
+Missing or invalid retry guidance uses exponential backoff
+from three seconds to one minute; a longer server delay takes precedence. A
+successful status response restores the normal polling interval. The shared SSE
+connection remains independent of these resume budgets.
+
+Run the isolated production HTTP regression without database cleanup or live
+credentials from `backend/` with
+`node node_modules/vitest/vitest.mjs run -c vitest.rate-limit.config.ts`.
+
 ---
 
 ## Real-time: SSE Singleton Pattern

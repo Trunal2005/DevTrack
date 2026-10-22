@@ -72,6 +72,20 @@ const ENDPOINT_CONFIGS: Record<string, RateLimitConfig> = {
     blockDurationMs: 600_000, // 10 minute block
     enableBurstHandling: false,
   },
+  resumeRead: {
+    windowMs: 60_000,
+    maxRequests: 120, // 1.5s polling (40/min), with room for report reads and tabs
+    keyPrefix: 'rl:resume-read',
+    blockDurationMs: 30_000,
+    enableBurstHandling: true,
+  },
+  resumeReadIngress: {
+    windowMs: 60_000,
+    maxRequests: 600, // Coarse IP protection before authentication; separate from user budgets
+    keyPrefix: 'rl:resume-read-ingress',
+    blockDurationMs: 30_000,
+    enableBurstHandling: true,
+  },
   default: {
     windowMs: 60_000,
     maxRequests: 100,
@@ -139,7 +153,7 @@ export function createRateLimiter(endpointType: string) {
 
     // Calculate reset time
     const ttl = await redis.ttl(key);
-    const resetAt = now + (ttl > 0 ? ttl : config.windowMs);
+    const resetAt = now + (ttl >= 0 ? ttl * 1000 : config.windowMs);
 
     // Check if over limit
     if (currentCount > config.maxRequests) {
@@ -209,6 +223,8 @@ export const rateLimiters = {
   ai: createRateLimiter('ai'),
   embedding: createRateLimiter('embedding'),
   resume: createRateLimiter('resume'),
+  resumeRead: createRateLimiter('resumeRead'),
+  resumeReadIngress: createRateLimiter('resumeReadIngress'),
   analytics: createRateLimiter('analytics'),
   default: createRateLimiter('default'),
 };

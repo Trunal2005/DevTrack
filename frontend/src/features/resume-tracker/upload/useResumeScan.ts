@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSse } from '../../../hooks/useSse';
 import axiosClient from '../../../utils/axiosClient';
+import { getResumePollingDelay, isRateLimited, RESUME_POLL_INTERVAL_MS } from './resumePolling';
 
 const STAGE_MAP: Record<string, number> = {
   UPLOADED: 0,
@@ -61,6 +62,9 @@ export function useResumeScan(sessionId: string, onComplete: () => void) {
     let phase: 'processing' | 'preparing' | 'completed' | 'failed' = 'processing';
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
     let completionTimer: ReturnType<typeof setTimeout> | undefined;
+    let reportRetryTimer: ReturnType<typeof setTimeout> | undefined;
+    let statusFailures = 0;
+    let reportFailures = 0;
     const controller = new AbortController();
     const config = { signal: controller.signal };
     const encodedId = encodeURIComponent(sessionId);
@@ -72,6 +76,7 @@ export function useResumeScan(sessionId: string, onComplete: () => void) {
       phase = 'failed';
       clearTimeout(pollTimer);
       clearTimeout(completionTimer);
+      clearTimeout(reportRetryTimer);
       controller.abort();
       setErrorMsg(message);
     }
@@ -103,6 +108,10 @@ export function useResumeScan(sessionId: string, onComplete: () => void) {
         }, 800);
       } catch (error) {
         if (!active || phase !== 'preparing') return;
+        if (isRateLimited(error)) {
+          reportRetryTimer = setTimeout(prepareReport, getResumePollingDelay(error, ++reportFailures));
+          return;
+        }
         const message = typeof error === 'object' && error !== null && 'message' in error
           && typeof error.message === 'string' ? error.message : 'Could not prepare the analysis report. Please retry.';
         fail(message);
@@ -130,15 +139,18 @@ export function useResumeScan(sessionId: string, onComplete: () => void) {
     }
 
     async function pollStatus() {
+      let nextPollDelay = RESUME_POLL_INTERVAL_MS;
       try {
         const response = await axiosClient.get<{ data: ProgressUpdate }>(`/resume/session/${encodedId}/status`, config);
         if (!active || phase !== 'processing') return;
+        statusFailures = 0;
         if (response.data?.data) handleProgress(response.data.data);
       } catch (error) {
         if (!active || phase !== 'processing') return;
+        nextPollDelay = getResumePollingDelay(error, ++statusFailures);
         console.warn('[ATSScanTransition] Poll fallback failed', error);
       }
-      if (active && phase === 'processing') pollTimer = setTimeout(pollStatus, 1500);
+      if (active && phase === 'processing') pollTimer = setTimeout(pollStatus, nextPollDelay);
     }
 
     progressRef.current = handleProgress;
@@ -150,6 +162,7 @@ export function useResumeScan(sessionId: string, onComplete: () => void) {
       controller.abort();
       clearTimeout(pollTimer);
       clearTimeout(completionTimer);
+      clearTimeout(reportRetryTimer);
     };
   }, [sessionId, retryAttempt]);
 

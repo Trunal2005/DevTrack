@@ -37,8 +37,17 @@ const globalRateLimit = rateLimit({
   message: 'Too many requests. Please slow down.',
 });
 
-// Apply global rate limiting to all routes
-router.use(globalRateLimit);
+// Polling has a dedicated authenticated budget. Keep an IP flood guard before
+// auth without exhausting the general 100-request/15-minute API budget.
+router.use((req, res, next) => {
+  const pollingRead = (req.method === 'GET' || req.method === 'HEAD') && (
+    /^\/resume\/session\/[^/]+(?:\/status)?\/?$/i.test(req.path)
+    || /^\/resume-intelligence\/report\/[^/]+\/?$/i.test(req.path)
+  );
+  return pollingRead
+    ? rateLimiters.resumeReadIngress(req, res, next)
+    : globalRateLimit(req, res, next);
+});
 
 // Auth routes (no auth required for login/register)
 router.use('/auth', authRoutes);
@@ -65,8 +74,8 @@ router.use('/onboarding', onboardingRoutes);
 router.use('/daily-challenge', dailyChallengeRoutes);
 router.use('/coaching', rateLimiters.ai, coachingRoutes);
 router.use('/readiness', readinessRoutes);
-router.use('/resume', rateLimiters.resume, uploadRoutes);
-router.use('/resume-intelligence', rateLimiters.resume, resumeIntelligenceRoutes);
+router.use('/resume', uploadRoutes);
+router.use('/resume-intelligence', resumeIntelligenceRoutes);
 router.use('/recommendations', rateLimiters.ai, recommendationRoutes);
 router.use('/analytics', analyticsRoutes);
 
