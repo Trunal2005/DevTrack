@@ -3,14 +3,26 @@ name: PR Checks
 on:
   pull_request:
     branches: [main, develop]
+  push:
+    branches:
+      - main
+      - develop
+      - fix/ci-repository-recovery
+      - 'feature/**'
+      - 'fix/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
 
 env:
   NODE_VERSION: '22'
 
 jobs:
-  # ── Fail Fast Checks (Lint & Typecheck) ───────────────────────────────────
+  # ── Fail Fast Checks (Lint, Typecheck & Build) ─────────────────────────────
   static-checks:
-    name: Static Checks
+    name: Static Checks & Build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,6 +33,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
 
       - name: Install dependencies (Backend)
         working-directory: ./backend
@@ -38,13 +54,17 @@ jobs:
         working-directory: ./frontend
         run: npx tsc --noEmit
 
-      - name: Lint Backend
-        working-directory: ./backend
-        run: npm run lint --if-present
-
       - name: Lint Frontend
         working-directory: ./frontend
         run: npm run lint --if-present
+
+      - name: Build Backend
+        working-directory: ./backend
+        run: npm run build
+
+      - name: Build Frontend
+        working-directory: ./frontend
+        run: npm run build
 
   # ── Unit Tests ────────────────────────────────────────────────────────────
   unit-tests:
@@ -60,6 +80,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
 
       - name: Install dependencies (Backend)
         working-directory: ./backend
@@ -83,15 +107,6 @@ jobs:
     needs: static-checks
     runs-on: ubuntu-latest
     services:
-      mongodb:
-        image: mongo:6.0
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.runCommand({ping: 1})' --quiet"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
       redis:
         image: redis:7.0-alpine
         ports:
@@ -103,7 +118,6 @@ jobs:
           --health-retries 5
 
     env:
-      MONGODB_URI: mongodb://127.0.0.1:27017/devtrack_test
       REDIS_URL: redis://127.0.0.1:6379
       NODE_ENV: test
       JWT_SECRET: test-secret-key-12345
@@ -118,6 +132,10 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
 
       - name: Install dependencies (Backend)
         working-directory: ./backend

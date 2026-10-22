@@ -12,12 +12,13 @@ import dsaRoutes from '../../../modules/dsa/dsa.routes.js';
 vi.mock('../../../middleware/index.js', async () => {
   const { validateBody } = await import('../../../middleware/validation.js');
   const { asyncHandler } = await import('../../../middleware/error.js');
+  const { commonErrors } = await import('../../../shared/response.js');
   return {
     validateBody,
     asyncHandler,
     authMiddleware: [(req: express.Request, res: express.Response, next: express.NextFunction) => {
       if (req.get('authorization') !== 'Bearer test-owner') {
-        res.status(401).json({ success: false });
+        commonErrors.unauthorized(res);
         return;
       }
       Object.assign(req, { user: { id: '000000000000000000000001' } });
@@ -108,6 +109,25 @@ describe('DSA PATCH routes', () => {
     expect((await DsaProblem.findById(ownedIds[0]).lean())?.notes).toBe('Review the two-pointer solution');
   });
 
+  it('accepts uppercase hexadecimal problem IDs', async () => {
+    const response = await patch('/problems/bulk-status', {
+      problemIds: ownedIds.map(id => id.toUpperCase()),
+      status: 'solved',
+    });
+
+    expect(response.status).toBe(200);
+    expect(await DsaProblem.countDocuments({ userId: ownerId, status: 'solved' })).toBe(2);
+    expect((await DsaProblem.findById(foreignId).lean())?.status).toBe('unsolved');
+  });
+
+  it('returns a bad request when an individual problem ID cannot be constructed', async () => {
+    const response = await patch('/problems/invalid-id', { notes: 'Not a valid problem ID' });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({ success: false, code: 'BAD_REQUEST', message: 'Invalid ID format' });
+    expect(await DsaProblem.countDocuments({ notes: 'Not a valid problem ID' })).toBe(0);
+  });
+
   it('does not update a bulk selection containing only foreign-owned problems', async () => {
     const response = await patch('/problems/bulk-status', { problemIds: [foreignId], status: 'solved' });
 
@@ -128,6 +148,11 @@ describe('DSA PATCH routes', () => {
     { status: 'solved' },
     { problemIds: 'not-an-array', status: 'solved' },
     { problemIds: [], status: 'invalid-status' },
+    { problemIds: [], status: 'solved' },
+    { problemIds: ['invalid-id'], status: 'solved' },
+    { problemIds: [''], status: 'solved' },
+    { problemIds: ['a'.repeat(23)], status: 'solved' },
+    { problemIds: ['g'.repeat(24)], status: 'solved' },
   ])('rejects a malformed bulk body: %j', async payload => {
     const response = await patch('/problems/bulk-status', payload);
 
@@ -136,10 +161,32 @@ describe('DSA PATCH routes', () => {
     expect(await DsaProblem.countDocuments({ status: 'solved' })).toBe(0);
   });
 
+  it('rejects a mixed valid/invalid selection before making any updates', async () => {
+    const response = await patch('/problems/bulk-status', {
+      problemIds: [ownedIds[0], 'invalid-id'],
+      status: 'solved',
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toMatchObject({
+      success: false,
+      code: 'VALIDATION_ERROR',
+      details: { 'problemIds.1': ['Invalid problem ID format'] },
+    });
+    expect(await DsaProblem.countDocuments({ status: 'solved' })).toBe(0);
+  });
+
   it('requires authentication for bulk updates', async () => {
     const response = await patch('/problems/bulk-status', { problemIds: ownedIds, status: 'solved' }, false);
 
     expect(response.status).toBe(401);
+    expect(response.body).toMatchObject({
+      success: false,
+      message: 'Unauthorized',
+      code: 'UNAUTHORIZED',
+      statusCode: 401,
+      timestamp: expect.any(String),
+    });
     expect(await DsaProblem.countDocuments({ status: 'solved' })).toBe(0);
   });
 });
