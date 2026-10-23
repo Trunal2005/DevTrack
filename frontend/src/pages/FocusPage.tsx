@@ -61,7 +61,7 @@ const FocusPage: React.FC = () => {
         className="flex flex-col gap-12 max-w-[1400px] mx-auto w-full pb-32 px-4 lg:px-8 relative"
       >
         {/* Ambient State Background */}
-        <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10 bg-gradient-to-br from-[#FAFBFD] via-[#F8F9FC] to-[#F6F8FB] transition-colors duration-1000">
+        <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10 bg-gradient-to-br from-[#FAFBFD] via-[#F8F9FC] to-[#F6F8FB] dark:from-[#09090B] dark:via-[#0D0D11] dark:to-[#111116] transition-colors duration-1000">
           <div className={`absolute top-[-15%] right-[-8%] w-[900px] h-[900px] bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] ${bgGradient1} to-transparent blur-[120px] rounded-full mix-blend-multiply opacity-70 animate-[pulse_8s_ease-in-out_infinite] transition-colors duration-[2000ms]`} />
           <div className={`absolute bottom-[-10%] left-[-12%] w-[700px] h-[700px] bg-[radial-gradient(circle_at_bottom_left,_var(--tw-gradient-stops))] ${bgGradient2} to-transparent blur-[120px] rounded-full mix-blend-multiply opacity-50 animate-[pulse_10s_ease-in-out_infinite_2s] transition-colors duration-[2000ms]`} />
         </div>

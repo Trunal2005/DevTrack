@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUserStore } from '../store/userStore';
 import { useUIStore } from '../store/uiStore';
+import { applyTheme } from '../store/appStateStore';
 import { useSse } from '../hooks/useSse';
 import { useUserObservation } from '../hooks/useUserObservation';
 import { initTelemetry } from '../lib/telemetry';
@@ -30,7 +31,6 @@ function getRarityTheme(level: number) {
 /** Wires theme, SSE, and lightweight telemetry for authenticated sessions */
 export function AppProviders({ children }: AppProvidersProps) {
   const isAuthenticated = useUserStore((s) => s.isAuthenticated);
-  const setTheme = useUIStore((s) => s.setTheme);
   const queryClient = useQueryClient();
   const { liveLevel } = useXpState();
 
@@ -51,11 +51,33 @@ export function AppProviders({ children }: AppProvidersProps) {
 
   useUserObservation(isAuthenticated);
 
+  const theme = useUIStore((s) => s.theme);
+
+  // Mount-only initialization
   useEffect(() => {
     initTelemetry();
-    setTheme('dark');
-    document.documentElement.setAttribute('data-theme', 'dark');
-  }, [setTheme]);
+  }, []);
+
+  // Theme application and system media query listener
+  useEffect(() => {
+    applyTheme(theme);
+    const mediaQuery = window.matchMedia?.('(prefers-color-scheme: dark)');
+    if (!mediaQuery) return;
+
+    const handleSystemChange = () => {
+      if (useUIStore.getState().theme === 'system') {
+        applyTheme('system');
+      }
+    };
+
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleSystemChange);
+      return () => mediaQuery.removeEventListener('change', handleSystemChange);
+    } else if (mediaQuery.addListener) {
+      mediaQuery.addListener(handleSystemChange);
+      return () => mediaQuery.removeListener(handleSystemChange);
+    }
+  }, [theme]);
 
   useEffect(() => {
     if (isAuthenticated) {

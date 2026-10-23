@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./styles/gamification-tokens.css";
+@custom-variant dark (&:where(.dark, .dark *));
 
 
 @theme {
@@ -955,4 +956,209 @@
 }
 .scrollbar-none::-webkit-scrollbar {
   display: none;  /* Chrome, Safari and Opera */
+}
+
+/* ============================================================================
+   DARK THEME SYSTEM
+   ============================================================================ */
+
+html.dark,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --color-dt-bg: #09090B;
+  --color-dt-surface: #121216;
+  --color-dt-elevated: #18181D;
+  --color-dt-mutedPurple: #1A162B;
+
+  --color-dt-text: #F8FAFC;
+  --color-dt-textSecondary: #94A3B8;
+  --color-dt-textMuted: #64748B;
+  --color-dt-textDisabled: #334155;
+
+  --background-image-dt-atmosphere: radial-gradient(circle at top left, rgba(124, 92, 252, 0.09), transparent 40%),
+    radial-gradient(circle at bottom right, rgba(167, 139, 250, 0.05), transparent 45%),
+    #09090B;
+
+  --shadow-dt-card: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --shadow-dt-card-hover: 0 8px 32px rgba(139, 92, 246, 0.18);
+  --shadow-dt-glow: 0 0 32px rgba(139, 92, 246, 0.22);
+  --shadow-dt-floating: 0 12px 48px rgba(0, 0, 0, 0.6);
+}
+
+/* Smooth transition for theme switches */
+html,
+body,
+aside,
+header,
+main,
+nav,
+footer {
+  transition: background-color 250ms cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 250ms cubic-bezier(0.16, 1, 0.3, 1),
+              color 200ms ease;
+}
+
+/* Base dark body */
+html.dark body {
+  background: var(--background-image-dt-atmosphere);
+  color: #F8FAFC;
+}
+
+/* Global Dark Mode Elements */
+.dark .dt-surface {
+  background-color: rgba(18, 18, 22, 0.92);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+.dark .dt-card,
+.dark .dt-card-base {
+  background-color: #121216;
+  border-color: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.dark .dt-card:hover,
+.dark .dt-card-base:hover {
+  border-color: rgba(139, 92, 246, 0.3);
+  box-shadow: 0 8px 32px rgba(139, 92, 246, 0.16);
+}
+
+.dark .dt-glass {
+  background-color: rgba(18, 18, 22, 0.8);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Dark mode overrides for common card backgrounds */
+.dark .bg-white:not([data-keep-light]) {
+  background-color: #121216;
+}
+
+.dark .bg-white\/40,
+.dark .bg-white\/50,
+.dark .bg-white\/60,
+.dark .bg-white\/70,
+.dark .bg-white\/75,
+.dark .bg-white\/80,
+.dark .bg-white\/90 {
+  background-color: rgba(18, 18, 22, 0.85);
+}
+
+.dark .bg-\[\#F8FAFC\],
+.dark .bg-\[\#FAFAFC\],
+.dark .bg-\[\#F6F8FB\],
+.dark .bg-\[\#FAFBFD\],
+.dark .bg-\[\#F8F9FC\],
+.dark .bg-\[\#F8F6F3\],
+.dark .bg-\[\#F6F4F1\] {
+  background-color: #09090B;
+}
+
+.dark .bg-\[\#F8FAFC\]\/75,
+.dark .bg-\[\#F8FAFC\]\/90 {
+  background-color: rgba(9, 9, 11, 0.9);
+}
+
+.dark .bg-slate-50,
+.dark .bg-gray-50,
+.dark .bg-zinc-50 {
+  background-color: #16161B;
+}
+
+.dark .bg-slate-100,
+.dark .bg-gray-100,
+.dark .bg-zinc-100 {
+  background-color: #1E1E26;
+}
+
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-zinc-50:hover {
+  background-color: #1A1A22;
+}
+
+.dark .hover\:bg-slate-100:hover,
+.dark .hover\:bg-gray-100:hover {
+  background-color: #242430;
+}
+
+/* Borders in Dark Mode */
+.dark .border-slate-100,
+.dark .border-gray-100,
+.dark .border-zinc-100,
+.dark .border-slate-100\/50 {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.dark .border-slate-200,
+.dark .border-slate-200\/40,
+.dark .border-slate-200\/50,
+.dark .border-slate-200\/60,
+.dark .border-slate-200\/80,
+.dark .border-gray-200,
+.dark .border-gray-200\/50,
+.dark .border-gray-200\/60,
+.dark .border-zinc-200,
+.dark .border-zinc-200\/80,
+.dark .border-white\/40,
+.dark .border-white\/50,
+.dark .border-white\/60 {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Text in Dark Mode */
+.dark .text-\[\#111827\],
+.dark .text-slate-800,
+.dark .text-slate-900,
+.dark .text-gray-900,
+.dark .text-zinc-900 {
+  color: #F8FAFC;
+}
+
+.dark .text-slate-700,
+.dark .text-slate-600,
+.dark .text-gray-700,
+.dark .text-gray-600,
+.dark .text-zinc-700,
+.dark .text-zinc-600 {
+  color: #CBD5E1;
+}
+
+.dark .text-slate-500,
+.dark .text-gray-500,
+.dark .text-zinc-500 {
+  color: #94A3B8;
+}
+
+.dark .text-slate-400,
+.dark .text-gray-400,
+.dark .text-zinc-400 {
+  color: #64748B;
+}
+
+/* Form inputs & interactive controls */
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark select,
+.dark textarea {
+  background-color: #16161B;
+  color: #F8FAFC;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  border-color: #8B5CF6;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.2);
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748B;
+}
+
+/* Modals and popovers */
+.dark [role="dialog"],
+.dark [role="menu"] {
+  background-color: #121216;
+  border-color: rgba(255, 255, 255, 0.1);
 }

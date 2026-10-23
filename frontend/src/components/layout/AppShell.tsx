@@ -32,6 +32,7 @@ import { useSse } from '../../hooks/useSse';
 import { useUIStore } from '../../store/uiStore';
 import { NotificationBell } from '../../features/notifications/NotificationBell';
 import { NotificationDrawer } from '../../features/notifications/NotificationDrawer';
+import { ThemeToggle } from '../shared/ThemeToggle';
 import { isFeatureEnabled } from '../../lib/feature-flags';
 import { useRuntimeState } from '../../hooks/useRuntimeState';
 import { useUserStore } from '../../store/userStore';
@@ -133,25 +134,25 @@ export const AppShell = () => {
   const mainMargin = collapsed ? 'md:ml-[5.25rem]' : 'md:ml-[14.5rem]';
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-[#111827] flex">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#09090B] text-[#111827] dark:text-[#F8FAFC] flex transition-colors duration-300">
       {/* ─── DESKTOP SIDEBAR ─── */}
       <aside
         className={cn(
           'hidden md:flex flex-col fixed left-0 top-0 h-screen z-40',
-          'bg-[#F8FAFC]/75 backdrop-blur-2xl border-r border-slate-200/50 transition-all duration-300 ease-out shadow-sm',
+          'bg-[#F8FAFC]/75 dark:bg-[#0D0D11]/90 backdrop-blur-2xl border-r border-slate-200/50 dark:border-zinc-800/80 transition-all duration-300 ease-out shadow-sm',
           sidebarWidth
         )}
       >
         {/* Logo */}
-        <div className={cn('h-[72px] flex items-center border-b border-slate-200/50', collapsed ? 'px-0 justify-center' : 'px-5')}>
+        <div className={cn('h-[72px] flex items-center border-b border-slate-200/50 dark:border-zinc-800/80', collapsed ? 'px-0 justify-center' : 'px-5')}>
           <Link to="/dashboard" className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#8B5CF6] to-[#A78BFA] flex items-center justify-center shrink-0 shadow-[0_4px_16px_rgba(139,92,246,0.3)]">
               <Zap className="w-[18px] h-[18px] text-white" />
             </div>
             {!collapsed && (
               <div className="flex flex-col min-w-0">
-                <span className="font-bold text-[14px] tracking-tight text-slate-800 leading-none">DevTrack</span>
-                <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400 mt-0.5">Engineering OS</span>
+                <span className="font-bold text-[14px] tracking-tight text-slate-800 dark:text-zinc-100 leading-none">DevTrack</span>
+                <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-zinc-500 mt-0.5">Engineering OS</span>
               </div>
             )}
           </Link>
@@ -223,7 +224,7 @@ export const AppShell = () => {
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
-          className="absolute -right-3 top-20 w-6 h-6 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-zinc-400 hover:text-[#111827] hover:border-[#8B5CF6]/40 transition-all duration-200"
+          className="absolute -right-3 top-20 w-6 h-6 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 shadow-sm flex items-center justify-center text-zinc-400 dark:text-zinc-400 hover:text-[#111827] dark:hover:text-zinc-100 hover:border-[#8B5CF6]/40 transition-all duration-200"
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
@@ -246,16 +247,16 @@ export const AppShell = () => {
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-              className="fixed left-0 top-0 h-full w-[260px] bg-white z-50 md:hidden shadow-2xl"
+              className="fixed left-0 top-0 h-full w-[260px] bg-white dark:bg-[#0D0D11] border-r border-slate-200/50 dark:border-zinc-800/80 z-50 md:hidden shadow-2xl"
             >
-              <div className="h-[72px] flex items-center justify-between px-5 border-b border-[rgba(17,24,39,0.06)]">
+              <div className="h-[72px] flex items-center justify-between px-5 border-b border-[rgba(17,24,39,0.06)] dark:border-zinc-800/80">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#8B5CF6] to-[#A78BFA] flex items-center justify-center shadow-[0_4px_16px_rgba(139,92,246,0.35)]">
                     <Zap className="w-[18px] h-[18px] text-white" />
                   </div>
-                  <span className="font-bold text-[15px] text-[#111827]">DevTrack</span>
+                  <span className="font-bold text-[15px] text-[#111827] dark:text-zinc-100">DevTrack</span>
                 </div>
-                <button type="button" onClick={() => setMobileOpen(false)} className="p-1.5 text-zinc-400 hover:text-[#111827]">
+                <button type="button" onClick={() => setMobileOpen(false)} className="p-1.5 text-zinc-400 hover:text-[#111827] dark:hover:text-zinc-200">
                   <X size={20} />
                 </button>
               </div>
@@ -277,7 +278,7 @@ export const AppShell = () => {
       {/* ─── MAIN CONTENT AREA ─── */}
       <main className={cn('flex-1 min-h-screen flex flex-col transition-all duration-300', mainMargin)}>
         {/* ─── TOPBAR (72px sticky with refined center layer) ─── */}
-        <header className="sticky top-0 z-30 h-[72px] bg-gradient-to-b from-[#F8FAFC] to-[#F8FAFC]/90 backdrop-blur-2xl border-b border-slate-200/50 shadow-sm flex items-center">
+        <header className="sticky top-0 z-30 h-[72px] bg-gradient-to-b from-[#F8FAFC] to-[#F8FAFC]/90 dark:from-[#09090B] dark:to-[#09090B]/90 backdrop-blur-2xl border-b border-slate-200/50 dark:border-zinc-800/80 shadow-sm flex items-center transition-colors duration-300">
           <div className="w-full max-w-[1440px] mx-auto px-4 md:px-8 flex items-center justify-between gap-4">
             {/* Mobile menu button */}
             <div className="flex items-center gap-2 md:hidden">
@@ -305,12 +306,17 @@ export const AppShell = () => {
               </button>
 
               {/* Realtime Status Dot */}
-              <div className="shrink-0 flex items-center border border-slate-200/80 bg-white/80 rounded-full px-3 py-1.5 shadow-sm">
+              <div className="shrink-0 flex items-center border border-slate-200/80 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 rounded-full px-3 py-1.5 shadow-sm">
                 <ConnectionDot status={connectionState} pingMs={pingMs} diagnostics={diagnostics} />
               </div>
 
+              {/* Theme Toggle */}
+              <div className="shrink-0">
+                <ThemeToggle />
+              </div>
+
               {/* Notifications */}
-              <div className="shrink-0 border border-slate-200/80 bg-white/80 rounded-full p-1.5 shadow-sm flex items-center justify-center">
+              <div className="shrink-0 border border-slate-200/80 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 rounded-full p-1.5 shadow-sm flex items-center justify-center">
                 <NotificationBell onClick={() => setNotificationsOpen(true)} />
               </div>
 
@@ -320,7 +326,7 @@ export const AppShell = () => {
                   afterSignOutUrl="/login"
                   appearance={{
                     elements: {
-                      userButtonAvatarBox: "w-8 h-8 rounded-full border border-slate-200 shadow-sm",
+                      userButtonAvatarBox: "w-8 h-8 rounded-full border border-slate-200 dark:border-zinc-700 shadow-sm",
                     }
                   }}
                 />
@@ -406,8 +412,8 @@ function SidebarNavLink({
         className={cn(
           'relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 group',
           active
-            ? 'bg-[#8B5CF6]/10 text-[#5B21B6]'
-            : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50',
+            ? 'bg-[#8B5CF6]/10 dark:bg-[#8B5CF6]/20 text-[#5B21B6] dark:text-[#A78BFA]'
+            : 'text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-100 hover:bg-slate-50 dark:hover:bg-zinc-800/60',
           collapsed && 'justify-center px-0 mx-1'
         )}
       >
