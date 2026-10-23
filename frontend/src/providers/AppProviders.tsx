@@ -53,19 +53,30 @@ export function AppProviders({ children }: AppProvidersProps) {
 
   const theme = useUIStore((s) => s.theme);
 
+  // Mount-only initialization
   useEffect(() => {
     initTelemetry();
-    applyTheme(theme);
+  }, []);
 
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  // Theme application and system media query listener
+  useEffect(() => {
+    applyTheme(theme);
+    const mediaQuery = window.matchMedia?.('(prefers-color-scheme: dark)');
+    if (!mediaQuery) return;
+
     const handleSystemChange = () => {
       if (useUIStore.getState().theme === 'system') {
         applyTheme('system');
       }
     };
 
-    mediaQuery.addEventListener('change', handleSystemChange);
-    return () => mediaQuery.removeEventListener('change', handleSystemChange);
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleSystemChange);
+      return () => mediaQuery.removeEventListener('change', handleSystemChange);
+    } else if (mediaQuery.addListener) {
+      mediaQuery.addListener(handleSystemChange);
+      return () => mediaQuery.removeListener(handleSystemChange);
+    }
   }, [theme]);
 
   useEffect(() => {

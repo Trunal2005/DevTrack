@@ -181,7 +181,7 @@ export function applyTheme(theme: 'light' | 'dark' | 'system') {
   const root = document.documentElement;
   const isDark =
     theme === 'system'
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? Boolean(window.matchMedia?.('(prefers-color-scheme: dark)')?.matches)
       : theme === 'dark';
 
   root.classList.toggle('dark', isDark);

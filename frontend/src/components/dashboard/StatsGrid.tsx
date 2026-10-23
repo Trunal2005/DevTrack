@@ -17,7 +17,7 @@ interface StatsGridProps {
 }
 
 const getPlatformLogo = (platformName: string): string => {
-  switch (platformName) {
+  switch (platformName.toLowerCase()) {
     case 'leetcode': return leetcodeLogo;
     case 'codeforces': return codeforcesLogo;
     case 'codechef': return codechefLogo;
@@ -27,7 +27,7 @@ const getPlatformLogo = (platformName: string): string => {
 };
 
 const getPlatformColor = (platformName: string): PlatformStatCardColor => {
-  switch (platformName) {
+  switch (platformName.toLowerCase()) {
     case 'leetcode': return 'yellow';
     case 'codeforces': return 'blue';
     case 'codechef': return 'orange';
@@ -92,8 +92,8 @@ export const StatsGrid: React.FC<StatsGridProps> = ({ stats, platformStats }) =>
           label: isGithub ? 'Repos' : 'Problems',
           rating: p.rating ? p.rating.toString() : '—',
           ratingLabel: isGithub ? 'Stars' : 'Rating',
-          logo: getPlatformLogo(platName),
-          color: getPlatformColor(platName),
+          logo: getPlatformLogo(platName.toLowerCase()),
+          color: getPlatformColor(platName.toLowerCase()),
           connected: hasData,
         };
       });

@@ -224,7 +224,7 @@ export const AppShell = () => {
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
-          className="absolute -right-3 top-20 w-6 h-6 rounded-full bg-white border border-slate-200 shadow-sm flex items-center justify-center text-zinc-400 hover:text-[#111827] hover:border-[#8B5CF6]/40 transition-all duration-200"
+          className="absolute -right-3 top-20 w-6 h-6 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 shadow-sm flex items-center justify-center text-zinc-400 dark:text-zinc-400 hover:text-[#111827] dark:hover:text-zinc-100 hover:border-[#8B5CF6]/40 transition-all duration-200"
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
@@ -247,16 +247,16 @@ export const AppShell = () => {
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-              className="fixed left-0 top-0 h-full w-[260px] bg-white z-50 md:hidden shadow-2xl"
+              className="fixed left-0 top-0 h-full w-[260px] bg-white dark:bg-[#0D0D11] border-r border-slate-200/50 dark:border-zinc-800/80 z-50 md:hidden shadow-2xl"
             >
-              <div className="h-[72px] flex items-center justify-between px-5 border-b border-[rgba(17,24,39,0.06)]">
+              <div className="h-[72px] flex items-center justify-between px-5 border-b border-[rgba(17,24,39,0.06)] dark:border-zinc-800/80">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#8B5CF6] to-[#A78BFA] flex items-center justify-center shadow-[0_4px_16px_rgba(139,92,246,0.35)]">
                     <Zap className="w-[18px] h-[18px] text-white" />
                   </div>
-                  <span className="font-bold text-[15px] text-[#111827]">DevTrack</span>
+                  <span className="font-bold text-[15px] text-[#111827] dark:text-zinc-100">DevTrack</span>
                 </div>
-                <button type="button" onClick={() => setMobileOpen(false)} className="p-1.5 text-zinc-400 hover:text-[#111827]">
+                <button type="button" onClick={() => setMobileOpen(false)} className="p-1.5 text-zinc-400 hover:text-[#111827] dark:hover:text-zinc-200">
                   <X size={20} />
                 </button>
               </div>

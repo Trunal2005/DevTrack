@@ -28,23 +28,23 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ className = '', showDr
       document.addEventListener('mousedown', handleOutsideClick);
     }
     return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [menuOpen]);
-
-  // Determine effective theme
+  }, [menuOpen]);  // Determine effective theme
   const isDarkEffective =
-    theme === 'dark' ||
-    (theme === 'system' &&
-      typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches);
+    theme === 'system'
+      ? typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-color-scheme: dark)')?.matches)
+      : theme === 'dark';
 
-  // Quick primary toggle (switches between Light & Dark)
+  // Next theme in cycle: Light -> Dark -> System -> Light
+  const nextTheme: 'light' | 'dark' | 'system' =
+    theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light';
+
+  // Quick primary toggle (cycles Light -> Dark -> System -> Light)
   const handleQuickToggle = (e: React.MouseEvent) => {
-    // If Shift or right click, open dropdown
+    // If Shift is pressed, open/close dropdown
     if (e.shiftKey) {
       setMenuOpen(!menuOpen);
       return;
     }
-    const nextTheme = isDarkEffective ? 'light' : 'dark';
     setTheme(nextTheme);
   };
 
@@ -57,8 +57,10 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ className = '', showDr
           e.preventDefault();
           setMenuOpen(!menuOpen);
         }}
-        aria-label={`Toggle color theme. Current theme: ${theme}. Click to switch to ${isDarkEffective ? 'light' : 'dark'} mode.`}
-        title={`Current: ${theme.toUpperCase()} mode (Click to switch to ${isDarkEffective ? 'light' : 'dark'}, right-click for options)`}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        aria-label={`Toggle color theme. Current theme: ${theme}. Click to switch to ${nextTheme} mode.`}
+        title={`Current: ${theme.toUpperCase()} mode (Click to switch to ${nextTheme}, right-click for options)`}
         className="relative p-2 rounded-full border border-slate-200/80 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 text-slate-600 dark:text-zinc-300 shadow-sm hover:border-[#8B5CF6]/50 dark:hover:border-[#8B5CF6]/50 hover:bg-[#8B5CF6]/5 dark:hover:bg-[#8B5CF6]/15 hover:text-[#8B5CF6] dark:hover:text-[#A78BFA] transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8B5CF6] cursor-pointer group"
         whileTap={{ scale: 0.92 }}
       >
@@ -79,7 +81,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ className = '', showDr
               key="moon"
               initial={{ rotate: 90, scale: 0.5, opacity: 0 }}
               animate={{ rotate: 0, scale: 1, opacity: 1 }}
-              exit={{ rotate: -90, scale: 0.5, opacity: 0 }}
+              exit={{ rotate: 90, scale: 0.5, opacity: 0 }}
               transition={{ duration: 0.2 }}
               className="text-indigo-600 group-hover:text-[#8B5CF6] group-hover:drop-shadow-[0_0_8px_rgba(139,92,246,0.5)]"
             >
@@ -115,6 +117,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ className = '', showDr
 
             <button
               type="button"
+              role="menuitem"
               onClick={() => {
                 setTheme('light');
                 setMenuOpen(false);
@@ -134,6 +137,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ className = '', showDr
 
             <button
               type="button"
+              role="menuitem"
               onClick={() => {
                 setTheme('dark');
                 setMenuOpen(false);
@@ -153,6 +157,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ className = '', showDr
 
             <button
               type="button"
+              role="menuitem"
               onClick={() => {
                 setTheme('system');
                 setMenuOpen(false);

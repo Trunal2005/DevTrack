@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   getInitialTheme,
   applyTheme,
@@ -7,11 +7,17 @@ import {
 } from './appStateStore';
 
 describe('theme state management and persistence', () => {
+  const originalMatchMedia = window.matchMedia;
+
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.className = '';
     document.documentElement.removeAttribute('data-theme');
     document.documentElement.style.colorScheme = '';
+  });
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
   });
 
   it('defaults to system theme when no stored preference exists', () => {
@@ -66,6 +72,37 @@ describe('theme state management and persistence', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true);
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('system');
+  });
+
+  it('resolves system light mode when system prefers-color-scheme dark does not match', () => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+
+    // Pre-populate with dark mode to ensure applyTheme('system') cleans it up
+    document.documentElement.classList.add('dark');
+    applyTheme('system');
+
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    expect(document.documentElement.style.colorScheme).toBe('light');
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('system');
+  });
+
+  it('safely handles environments where window.matchMedia is undefined', () => {
+    // @ts-expect-error simulating environment without matchMedia
+    window.matchMedia = undefined;
+
+    expect(() => applyTheme('system')).not.toThrow();
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
   });
 
   it('setTheme in useAppStateStore updates store and applies theme', () => {
