@@ -151,7 +151,7 @@ export async function processXpEvent(payload: XpEventPayload): Promise<XpProcess
   }
 
   // ── Step 7: Sync to UserAnalytics ────────────────────────────────────────
-  await syncUserAnalytics(userId, newTotalXp, levelAfter, sourceType);
+  await syncUserAnalytics(userId, newTotalXp, xpAwarded, levelAfter, sourceType);
 
   // ── Step 8: Update mission progress ──────────────────────────────────────
   if (sourceType === 'dsa_accepted') {
@@ -322,6 +322,7 @@ export async function getUserXp(userId: string): Promise<{
 async function syncUserAnalytics(
   userId: string,
   totalXp: number,
+  xpAwarded: number,
   currentLevel: number,
   sourceType: XpSourceType
 ): Promise<void> {
@@ -338,15 +339,15 @@ async function syncUserAnalytics(
 
     let weeklyXPHistory = analytics?.weeklyXPHistory ?? [];
 
-    // Update or add current week
+    // Weekly buckets accumulate this event's award, not the lifetime total.
     const weekIndex = weeklyXPHistory.findIndex(
       (w) => w.weekStart.getTime() === weekStart.getTime()
     );
 
     if (weekIndex >= 0) {
-      weeklyXPHistory[weekIndex].xp += totalXp;
+      weeklyXPHistory[weekIndex].xp += xpAwarded;
     } else {
-      weeklyXPHistory.push({ weekStart, xp: totalXp });
+      weeklyXPHistory.push({ weekStart, xp: xpAwarded });
     }
 
     // Keep only last 12 weeks
