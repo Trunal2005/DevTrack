@@ -2,22 +2,28 @@
 import { PAGINATION } from '../config/constants.js';
 import type { ApiPagination } from '../types/api.types.js';
 
+const MAX_PAGE_LIMIT = 100_000;
+
 export interface PaginationParams {
   page: number;
   pageSize: number;
 }
 
-export function parsePaginationParams(query: { page?: string; pageSize?: string }): PaginationParams {
-  const parsedPage = parseInt(query.page || String(PAGINATION.DEFAULT_PAGE), 10);
-  const parsedPageSize = parseInt(query.pageSize || String(PAGINATION.DEFAULT_PAGE_SIZE), 10);
+export function parsePaginationParams(
+  query: { page?: string | number; pageSize?: string | number } = {}
+): PaginationParams {
+  const rawPage = query.page !== undefined ? String(query.page) : undefined;
+  const rawPageSize = query.pageSize !== undefined ? String(query.pageSize) : undefined;
+  const parsedPage = parseInt(rawPage || String(PAGINATION.DEFAULT_PAGE), 10);
+  const parsedPageSize = parseInt(rawPageSize || String(PAGINATION.DEFAULT_PAGE_SIZE), 10);
   const pageSize = Math.min(
     PAGINATION.MAX_PAGE_SIZE,
     Math.max(1, Number.isFinite(parsedPageSize) ? parsedPageSize : PAGINATION.DEFAULT_PAGE_SIZE)
   );
 
-  // Bound the effective page before multiplying: both metadata and the MongoDB
-  // offset must stay within JavaScript's exact integer range.
+  // Bound deep pagination and keep metadata and offsets consistent before multiplying.
   const maxPage = Math.min(
+    MAX_PAGE_LIMIT,
     Number.MAX_SAFE_INTEGER,
     Math.floor(Number.MAX_SAFE_INTEGER / pageSize) + 1
   );

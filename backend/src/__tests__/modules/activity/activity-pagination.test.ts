@@ -37,19 +37,35 @@ import { getProjects } from '../../../modules/projects/projects.service.js';
 let server: Server;
 let baseUrl: string;
 
+function startTestServer(app: ReturnType<typeof express>, port = 0): Promise<Server> {
+  return new Promise<Server>((resolve, reject) => {
+    // Express 5 can invoke its listen callback on errors, so wait for the
+    // server's listening event explicitly and reject on bind errors.
+    const listener = app.listen(port, '127.0.0.1');
+    const onError = (error: Error) => {
+      listener.off('listening', onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      listener.off('error', onError);
+      resolve(listener);
+    };
+    listener.once('error', onError);
+    listener.once('listening', onListening);
+  });
+}
+
 beforeAll(async () => {
   vi.stubEnv('CLERK_SECRET_KEY', 'sk_test_pagination_fixture');
   const app = express();
   app.use('/api/v1/activity', activityRoutes);
-  server = await new Promise<Server>((resolve) => {
-    const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
-  });
+  server = await startTestServer(app);
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/activity/feed`;
 });
 
 afterAll(async () => {
   vi.unstubAllEnvs();
-  if (server) await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
+  if (server?.listening) await new Promise<void>((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
 });
 
 beforeEach(() => {
@@ -65,6 +81,15 @@ beforeEach(() => {
 });
 
 describe('activity feed pagination through HTTP', () => {
+  it('rejects setup when the HTTP port is already bound', async () => {
+    const port = (server.address() as AddressInfo).port;
+    await expect(startTestServer(express(), port)).rejects.toMatchObject({ code: 'EADDRINUSE' });
+  });
+
+  it('removes the startup error listener after successful binding', () => {
+    expect(server.listenerCount('error')).toBe(0);
+  });
+
   it.each([
     ['', 1, 20],
     ['page=2&pageSize=10', 2, 10],
@@ -72,7 +97,10 @@ describe('activity feed pagination through HTTP', () => {
     ['page=%20%20&pageSize=%09', 1, 20],
     ['page=Infinity&pageSize=Infinity', 1, 20],
     [`page=${'9'.repeat(400)}&pageSize=${'9'.repeat(400)}`, 1, 20],
-    [`page=${Number.MAX_SAFE_INTEGER}&pageSize=100`, Math.floor(Number.MAX_SAFE_INTEGER / 100) + 1, 100],
+    [`page=${Number.MAX_SAFE_INTEGER}&pageSize=100`, 100_000, 100],
+    ['page=100000&pageSize=1', 100_000, 1],
+    ['page=100001&pageSize=20', 100_000, 20],
+    ['page=999999999999&pageSize=100', 100_000, 100],
     ['page=0&pageSize=-2', 1, 1],
     ['page=2&pageSize=200', 2, 100],
     ['page=2&page=3&pageSize=10&pageSize=20', 2, 10],

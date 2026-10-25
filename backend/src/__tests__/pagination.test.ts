@@ -20,6 +20,12 @@ describe('pagination query normalization', () => {
     ['12abc', '10Infinity', 12, 10],
     ['1e3', '2e2', 1, 2],
     [' 2 ', ' 10 ', 2, 10],
+    [2, 10, 2, 10],
+    [NaN, Infinity, PAGINATION.DEFAULT_PAGE, PAGINATION.DEFAULT_PAGE_SIZE],
+    [undefined, 10, PAGINATION.DEFAULT_PAGE, 10],
+    [2, undefined, 2, PAGINATION.DEFAULT_PAGE_SIZE],
+    [0, 0, 1, 1],
+    [-2, -10, 1, 1],
   ])('normalizes page=%j, pageSize=%j to %i/%i', (page, pageSize, expectedPage, expectedSize) => {
     const params = parsePaginationParams({ page, pageSize });
     expect(params).toEqual({ page: expectedPage, pageSize: expectedSize });
@@ -27,9 +33,19 @@ describe('pagination query normalization', () => {
     expect(Number.isSafeInteger(getSkipCount(params))).toBe(true);
   });
 
-  it.each([1, 2, 10, 20, 100])('bounds offsets before multiplication for pageSize=%i', (pageSize) => {
-    const maxPage = Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number.MAX_SAFE_INTEGER / pageSize) + 1);
-    for (const page of [maxPage - 1, maxPage, maxPage + 1, Number.MAX_SAFE_INTEGER, 1e20]) {
+  it('uses existing defaults for omitted and empty query arguments', () => {
+    const defaults = { page: PAGINATION.DEFAULT_PAGE, pageSize: PAGINATION.DEFAULT_PAGE_SIZE };
+    expect(parsePaginationParams()).toEqual(defaults);
+    expect(parsePaginationParams({})).toEqual(defaults);
+    expect(parsePaginationParams(undefined)).toEqual(defaults);
+  });
+
+  it.each([1, 2, 10, 20, 100])('enforces the practical cap and safe offsets for pageSize=%i', (pageSize) => {
+    // The review explicitly sets this contract independently of the numeric bound.
+    const maxPage = 100_000;
+    const numericBoundary = Math.min(Number.MAX_SAFE_INTEGER, Math.floor(Number.MAX_SAFE_INTEGER / pageSize) + 1);
+    for (const page of [maxPage - 1, maxPage, maxPage + 1, 999_999_999_999,
+      numericBoundary, numericBoundary + 1, Number.MAX_SAFE_INTEGER, 1e20]) {
       const params = parsePaginationParams({ page: String(page), pageSize: String(pageSize) });
       expect(params).toEqual({ page: Math.min(page, maxPage), pageSize });
       const skip = getSkipCount(params);
@@ -43,12 +59,21 @@ describe('pagination query normalization', () => {
     }
   });
 
-  it('preserves large supported pages and ordinary metadata', () => {
+  it('caps extremely large pages while preserving ordinary metadata', () => {
     const large = parsePaginationParams({ page: '1000000000', pageSize: '100' });
-    expect(large.page).toBe(1_000_000_000);
-    expect(getSkipCount(large)).toBe(99_999_999_900);
+    expect(large.page).toBe(100_000);
+    expect(getSkipCount(large)).toBe(9_999_900);
     expect(createPagination(35, parsePaginationParams({ page: '2', pageSize: '10' }))).toEqual({
       page: 2, pageSize: 10, totalItems: 35, totalPages: 4, hasNextPage: true, hasPrevPage: true,
     });
+  });
+});
+
+describe('pagination metadata edge cases', () => {
+  it.each([
+    { totalItems: 0, page: 1, pageSize: 20, totalPages: 0, hasNextPage: false, hasPrevPage: false },
+    { totalItems: 10, page: 5, pageSize: 10, totalPages: 1, hasNextPage: false, hasPrevPage: true },
+  ])('handles totalItems=$totalItems at page=$page', (expected) => {
+    expect(createPagination(expected.totalItems, { page: expected.page, pageSize: expected.pageSize })).toEqual(expected);
   });
 });
