@@ -8,11 +8,20 @@ export interface PaginationParams {
 }
 
 export function parsePaginationParams(query: { page?: string; pageSize?: string }): PaginationParams {
-  const page = Math.max(1, parseInt(query.page || String(PAGINATION.DEFAULT_PAGE), 10));
+  const parsedPage = parseInt(query.page || String(PAGINATION.DEFAULT_PAGE), 10);
+  const parsedPageSize = parseInt(query.pageSize || String(PAGINATION.DEFAULT_PAGE_SIZE), 10);
   const pageSize = Math.min(
     PAGINATION.MAX_PAGE_SIZE,
-    Math.max(1, parseInt(query.pageSize || String(PAGINATION.DEFAULT_PAGE_SIZE), 10))
+    Math.max(1, Number.isFinite(parsedPageSize) ? parsedPageSize : PAGINATION.DEFAULT_PAGE_SIZE)
   );
+
+  // Bound the effective page before multiplying: both metadata and the MongoDB
+  // offset must stay within JavaScript's exact integer range.
+  const maxPage = Math.min(
+    Number.MAX_SAFE_INTEGER,
+    Math.floor(Number.MAX_SAFE_INTEGER / pageSize) + 1
+  );
+  const page = Math.min(maxPage, Math.max(1, Number.isFinite(parsedPage) ? parsedPage : PAGINATION.DEFAULT_PAGE));
 
   return { page, pageSize };
 }
