@@ -2,10 +2,13 @@
 // Unit tests for the streak service — activity recording, recalculation,
 // deduplication, anti-cheat, and freeze mechanics.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { Types } from 'mongoose';
-import { recordActivity, recalculateStreak, activateStreakFreeze, getStreakHistory } from '../../../modules/streak/streak.service.js';
-import { UserStreakLog, UserAnalytics, User } from '../../../db/models/index.js';
+import { recordActivity, recalculateStreak, activateStreakFreeze, getStreakHistory, getStreakStatus } from '../../../modules/streak/streak.service.js';
+import { UserStreakLog, UserAnalytics, User, DailyActivity, type StreakType } from '../../../db/models/index.js';
+import { getStreakData } from '../../../modules/dashboard/dashboard.service.js';
+import { getXpProcessingQueue } from '../../../shared/jobs/index.js';
+import { eventBus } from '../../../shared/sse/index.js';
 
 // Mock non-DB dependencies
 vi.mock('../../../shared/sse/index.js', () => ({
@@ -236,6 +239,157 @@ describe('Streak Service — recalculateStreak', () => {
     const status = await recalculateStreak(userId, 'dsa');
     expect(status.currentStreak).toBe(2);
     expect(status.bestStreak).toBe(2);
+  });
+});
+
+describe('Streak Service — calendar continuity regressions', () => {
+  let userId: string;
+  const validFreeze = new Date('2026-10-22T12:00:00Z');
+
+  beforeAll(async () => {
+    await Promise.all([User.init(), UserStreakLog.init(), UserAnalytics.init(), DailyActivity.init()]);
+  });
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    // Keep MongoDB's network and timeout timers real.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-21T12:00:00Z'));
+    userId = new Types.ObjectId().toHexString();
+    await User.create({ _id: userId, username: `u${userId}`, email: `${userId}@example.test`,
+      displayName: 'Streak Regression', clerkId: `clerk_${userId}`, timezone: 'UTC' });
+  });
+
+  afterEach(() => { vi.useRealTimers(); });
+
+  async function seedDays(dates: string[], streakType: StreakType = 'dsa', owner = userId) {
+    await UserStreakLog.insertMany(dates.map(date => ({
+      userId: owner, date: new Date(`${date}T00:00:00Z`), streakType,
+      activityCount: 1, sources: [`source-${date}`], timezone: 'UTC',
+    })));
+  }
+
+  it.each([
+    { timezone: 'UTC', now: '2026-10-21T00:15:00Z', older: '2026-10-19T00:05:00Z', latest: '2026-10-21T00:05:00Z', day: '2026-10-21' },
+    { timezone: 'Asia/Kolkata', now: '2026-10-21T19:15:00Z', older: '2026-10-19T19:00:00Z', latest: '2026-10-21T19:00:00Z', day: '2026-10-22' },
+    { timezone: 'America/Los_Angeles', now: '2026-10-21T07:15:00Z', older: '2026-10-19T07:05:00Z', latest: '2026-10-21T07:05:00Z', day: '2026-10-21' },
+  ])('breaks an unprotected gap near midnight in $timezone', async (spec) => {
+    vi.setSystemTime(new Date(spec.now));
+    await User.findByIdAndUpdate(userId, { timezone: spec.timezone });
+    await recordActivity({ userId, streakType: 'dsa', source: 'older', timezone: spec.timezone, activityDate: new Date(spec.older) });
+    const latest = { userId, streakType: 'dsa' as const, source: 'latest', timezone: spec.timezone, activityDate: new Date(spec.latest) };
+    await recordActivity(latest);
+    await recordActivity(latest);
+    const status = await getStreakStatus(userId, 'dsa');
+    const analytics = await UserAnalytics.findOne({ userId }).lean();
+    const logs = await UserStreakLog.find({ userId }).sort({ date: 1 }).lean();
+
+    expect(logs.map(log => log.activityCount)).toEqual([1, 1]);
+    expect(logs[1].date).toEqual(new Date(`${spec.day}T00:00:00Z`));
+    expect.soft(status).toEqual({ currentStreak: 1, bestStreak: 1, streakType: 'dsa',
+      lastActiveDate: new Date(`${spec.day}T00:00:00Z`), isActiveToday: true, streakFreezeUntil: null });
+    expect(analytics).toMatchObject({ currentStreak: 1, bestStreak: 1, currentStreakType: 'dsa' });
+  });
+
+  it('retains yesterday grace without allowing another historical gap', async () => {
+    await seedDays(['2026-10-20', '2026-10-18']);
+    const status = await getStreakStatus(userId, 'dsa');
+    expect(status.currentStreak).toBe(1);
+    expect(status.isActiveToday).toBe(false);
+    expect(status.lastActiveDate).toEqual(new Date('2026-10-20T00:00:00Z'));
+  });
+
+  it('retains yesterday-only grace', async () => {
+    await seedDays(['2026-10-20']);
+    expect(await getStreakStatus(userId, 'dsa')).toMatchObject({ currentStreak: 1, isActiveToday: false });
+  });
+
+  it.each([
+    { name: 'valid one-day protection', days: ['21', '19'], freeze: validFreeze, expected: 2, remaining: null },
+    { name: 'expired earlier today', days: ['21', '19'], freeze: new Date('2026-10-21T11:00:00Z'), expected: 1, remaining: null },
+    { name: 'expired yesterday', days: ['21', '19'], freeze: new Date('2026-10-20T23:00:00Z'), expected: 1, remaining: null },
+    { name: 'already consumed protection', days: ['21', '19'], freeze: null, expected: 1, remaining: null },
+    { name: 'two missed days', days: ['21', '18'], freeze: validFreeze, expected: 1, remaining: validFreeze },
+    { name: 'two separate missing days', days: ['21', '19', '17'], freeze: validFreeze, expected: 2, remaining: null },
+    { name: 'unnecessary protection on consecutive days', days: ['21', '20', '19'], freeze: validFreeze, expected: 3, remaining: validFreeze },
+    { name: 'initial grace plus one protected day', days: ['19'], freeze: validFreeze, expected: 1, remaining: null },
+    { name: 'initial gap without protection', days: ['19'], freeze: null, expected: 0, remaining: null },
+    { name: 'initial gap beyond protection', days: ['18'], freeze: validFreeze, expected: 0, remaining: validFreeze },
+  ])('handles $name', async ({ days, freeze, expected, remaining }) => {
+    await seedDays(days.map(day => `2026-10-${day}`));
+    await UserAnalytics.create({ userId, streakFreezeUntil: freeze });
+    const status = await recalculateStreak(userId, 'dsa');
+    const analytics = await UserAnalytics.findOne({ userId }).lean();
+    expect.soft(status.currentStreak).toBe(expected);
+    expect.soft(analytics).toMatchObject({ currentStreak: expected, bestStreak: expected, streakFreezeUntil: remaining });
+    if (freeze === validFreeze) expect(status.streakFreezeUntil).toEqual(remaining);
+  });
+
+  it('suppresses false milestones and persists only the consecutive suffix', async () => {
+    await seedDays(['2026-10-21', '2026-10-19', '2026-10-17']);
+    const status = await recalculateStreak(userId, 'dsa');
+    expect.soft(status.currentStreak).toBe(1);
+    expect.soft(await UserAnalytics.findOne({ userId }).lean()).toMatchObject({ currentStreak: 1, bestStreak: 1 });
+    expect.soft(eventBus.emitStreakMilestone).not.toHaveBeenCalled();
+    expect(getXpProcessingQueue().add).not.toHaveBeenCalled();
+  });
+
+  it('queues a genuine three-day milestone exactly once', async () => {
+    await seedDays(['2026-10-21', '2026-10-20', '2026-10-19']);
+    expect((await recalculateStreak(userId, 'dsa')).currentStreak).toBe(3);
+    await recalculateStreak(userId, 'dsa');
+    expect(eventBus.emitStreakMilestone).toHaveBeenCalledExactlyOnceWith(userId, 3, 'dsa');
+    expect(getXpProcessingQueue().add).toHaveBeenCalledExactlyOnceWith('streak-milestone', {
+      userId, sourceType: 'daily_streak', sourceId: `streak_3_${Date.now()}`,
+      metadata: { streakDays: 3, streakType: 'dsa' },
+    });
+  });
+
+  it('preserves historical best while correcting current streak forward', async () => {
+    await seedDays(['2026-10-21', '2026-10-19']);
+    await UserAnalytics.create({ userId, currentStreak: 9, bestStreak: 12 });
+    expect(await recalculateStreak(userId, 'dsa')).toMatchObject({ currentStreak: 1, bestStreak: 12 });
+    expect(await UserAnalytics.findOne({ userId }).lean()).toMatchObject({ currentStreak: 1, bestStreak: 12 });
+  });
+
+  it('counts multiple sources and duplicate replays as one calendar day', async () => {
+    const payload = { userId, streakType: 'dsa' as const, source: 'first', timezone: 'UTC' };
+    await recordActivity(payload);
+    await recordActivity(payload);
+    await recordActivity({ ...payload, source: 'second' });
+    const logs = await UserStreakLog.find({ userId }).lean();
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ activityCount: 2, sources: ['first', 'second'] });
+    expect((await getStreakStatus(userId, 'dsa')).currentStreak).toBe(1);
+  });
+
+  it.each<StreakType>(['dsa', 'github', 'focus', 'unified'])('isolates ownership and %s logs', async (streakType) => {
+    await seedDays(['2026-10-21', '2026-10-19'], streakType);
+    await seedDays(['2026-10-20'], streakType, new Types.ObjectId().toHexString());
+    await seedDays(['2026-10-20'], streakType === 'github' ? 'dsa' : 'github');
+    expect(await getStreakStatus(userId, streakType)).toMatchObject({ currentStreak: 1, streakType });
+  });
+
+  it.each([
+    { name: 'leap day', now: '2024-03-01T12:00:00Z', timezone: 'UTC', dates: ['2024-03-01', '2024-02-29', '2024-02-28'] },
+    { name: 'year boundary', now: '2026-01-01T12:00:00Z', timezone: 'UTC', dates: ['2026-01-01', '2025-12-31', '2025-12-30'] },
+    { name: 'spring DST', now: '2026-03-09T07:15:00Z', timezone: 'America/Los_Angeles', dates: ['2026-03-09', '2026-03-08', '2026-03-07'] },
+    { name: 'autumn DST', now: '2026-11-02T08:15:00Z', timezone: 'America/Los_Angeles', dates: ['2026-11-02', '2026-11-01', '2026-10-31'] },
+  ])('retains consecutive calendar days across $name', async ({ now, timezone, dates }) => {
+    vi.setSystemTime(new Date(now));
+    await User.findByIdAndUpdate(userId, { timezone });
+    await seedDays(dates);
+    expect(await getStreakStatus(userId, 'dsa')).toMatchObject({ currentStreak: 3, isActiveToday: true });
+    expect(await UserAnalytics.findOne({ userId }).lean()).toMatchObject({ currentStreak: 3, bestStreak: 3 });
+  });
+
+  it('agrees with the dashboard for equivalent activity calendars', async () => {
+    await seedDays(['2026-10-21', '2026-10-19']);
+    // The dashboard stores server-local dates; typed logs store user calendar labels in UTC.
+    await DailyActivity.insertMany([21, 19].map(day => ({ userId, date: new Date(2026, 9, day), count: 1 })));
+    const dashboard = await getStreakData(userId);
+    expect(dashboard.currentStreak).toBe(1);
+    expect((await getStreakStatus(userId, 'dsa')).currentStreak).toBe(dashboard.currentStreak);
   });
 });
 
