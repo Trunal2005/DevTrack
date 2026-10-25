@@ -272,25 +272,23 @@ function calculateCurrentStreak(
   let expectedDate = new Date(today);
 
   // Determine if freeze is currently active
-  const freezeActive = streakFreezeUntil !== null && streakFreezeUntil >= today;
+  const freezeActive = streakFreezeUntil !== null && streakFreezeUntil >= new Date();
 
   for (const dateKey of sortedDates) {
     const logDate = new Date(dateKey + 'T00:00:00.000Z');
     const daysDiff = Math.round((expectedDate.getTime() - logDate.getTime()) / (1000 * 60 * 60 * 24));
 
-    if (daysDiff > 1) {
+    // Today may still be incomplete, but that grace applies only to the first log.
+    const initialGraceDays = streakCount === 0 ? 1 : 0;
+    if (daysDiff > initialGraceDays) {
       // Gap detected — check if freeze covers it
-      if (freezeActive && !freezeConsumed && daysDiff === 2) {
+      if (freezeActive && !freezeConsumed && daysDiff === initialGraceDays + STREAK_FREEZE_DAYS) {
         // Freeze covers exactly one missed day — consume it and continue
         freezeConsumed = true;
-        // Adjust expectedDate to skip the gap day
-        expectedDate = new Date(logDate.getTime() - 24 * 60 * 60 * 1000);
-        streakDays.push(logDate);
-        streakCount++;
-        continue;
+      } else {
+        // No freeze available or gap too large — streak breaks
+        break;
       }
-      // No freeze available or gap too large — streak breaks
-      break;
     }
 
     // Valid streak day
