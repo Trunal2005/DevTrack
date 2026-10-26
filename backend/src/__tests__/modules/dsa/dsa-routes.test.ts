@@ -2,7 +2,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import express from 'express';
 import { Types } from 'mongoose';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DsaProblem } from '../../../db/models/index.js';
 import { errorHandler } from '../../../middleware/error.js';
 import dsaRoutes from '../../../modules/dsa/dsa.routes.js';
@@ -188,5 +188,146 @@ describe('DSA PATCH routes', () => {
       timestamp: expect.any(String),
     });
     expect(await DsaProblem.countDocuments({ status: 'solved' })).toBe(0);
+  });
+
+  describe('individual status updates', () => {
+    const now = new Date('2026-10-26T12:00:00Z');
+    const previous = new Date('2026-10-01T09:00:00Z');
+
+    beforeEach(() => {
+      // Freeze dates without interfering with HTTP or MongoDB timers.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(now);
+    });
+
+    afterEach(() => { vi.useRealTimers(); });
+
+    async function seedSubmissionMetadata() {
+      await DsaProblem.findByIdAndUpdate(ownedIds[0], {
+        $set: { status: 'solved', submissionCount: 7, solvedAt: previous, lastSubmittedAt: previous },
+      });
+    }
+
+    it.each(['unsolved', 'attempted', 'solved', 'revisit'] as const)(
+      'persists %s with one increment and the existing timestamp semantics', async status => {
+        await seedSubmissionMetadata();
+        const response = await patch(`/problems/${ownedIds[0]}`, { status });
+        const solvedAt = status === 'solved' ? now : previous;
+
+        expect.soft(response.status).toBe(200);
+        expect.soft(response.body).toMatchObject({ success: true, data: {
+          id: ownedIds[0], status, submissionCount: 8,
+          lastSubmittedAt: now.toISOString(), solvedAt: solvedAt.toISOString(),
+        } });
+        expect(await DsaProblem.findById(ownedIds[0]).lean()).toMatchObject({
+          status, submissionCount: 8, lastSubmittedAt: now, solvedAt,
+        });
+        expect(await DsaProblem.findById(ownedIds[1]).lean()).toMatchObject({ status: 'unsolved', submissionCount: 0 });
+      },
+    );
+
+    it('increments the default zero counter and retains the problem response fields', async () => {
+      const response = await patch(`/problems/${ownedIds[0]}`, { status: 'attempted' });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toEqual({
+        id: ownedIds[0], externalId: 'owned-1', title: 'Owned problem 1', platform: 'leetcode',
+        difficulty: 'easy', url: 'https://leetcode.com/problems/two-sum/', tags: [], category: 'arrays',
+        status: 'attempted', notes: null, timeTaken: null, submissionCount: 1,
+        lastSubmittedAt: now.toISOString(), solvedAt: null, isFavorite: false,
+        createdAt: expect.any(String), updatedAt: now.toISOString(),
+      });
+      expect(await DsaProblem.findById(ownedIds[0]).lean()).toMatchObject({
+        status: 'attempted', submissionCount: 1, lastSubmittedAt: now, solvedAt: null,
+      });
+    });
+
+    it('combines a status increment with supported non-status fields', async () => {
+      const response = await patch(`/problems/${ownedIds[0]}`, {
+        status: 'solved', notes: 'Reviewed solution', timeTaken: 15, isFavorite: true, tags: ['arrays'],
+      });
+
+      expect(response.status).toBe(200);
+      expect(await DsaProblem.findById(ownedIds[0]).lean()).toMatchObject({
+        status: 'solved', notes: 'Reviewed solution', timeTaken: 15, isFavorite: true, tags: ['arrays'],
+        submissionCount: 1, solvedAt: now, lastSubmittedAt: now,
+      });
+    });
+
+    it.each([{ notes: 'Notes only' }, {}])('preserves submission metadata without status: %j', async payload => {
+      await seedSubmissionMetadata();
+      const response = await patch(`/problems/${ownedIds[0]}`, payload);
+
+      expect(response.status).toBe(200);
+      expect(await DsaProblem.findById(ownedIds[0]).lean()).toMatchObject({
+        ...payload, status: 'solved', submissionCount: 7, solvedAt: previous, lastSubmittedAt: previous,
+      });
+    });
+
+    it('increments once per repeated valid request and dates the latest solve', async () => {
+      const counters: number[] = [];
+      for (const [index, status] of (['solved', 'revisit', 'solved'] as const).entries()) {
+        vi.setSystemTime(new Date(now.getTime() + index * 60_000));
+        const response = await patch(`/problems/${ownedIds[0]}`, { status });
+        expect(response.status).toBe(200);
+        counters.push(response.body.data.submissionCount);
+      }
+      expect(counters).toEqual([1, 2, 3]);
+      const latest = new Date(now.getTime() + 2 * 60_000);
+      expect(await DsaProblem.findById(ownedIds[0]).lean()).toMatchObject({
+        status: 'solved', submissionCount: 3, solvedAt: latest, lastSubmittedAt: latest,
+      });
+    });
+
+    it('does not lose increments when valid status requests run concurrently', async () => {
+      await seedSubmissionMetadata();
+      const responses = await Promise.all(Array.from({ length: 8 }, () =>
+        patch(`/problems/${ownedIds[0]}`, { status: 'attempted' }),
+      ));
+
+      expect(responses.map(response => response.status)).toEqual(Array(8).fill(200));
+      expect(responses.map(response => response.body.data.submissionCount).sort((a, b) => a - b))
+        .toEqual([8, 9, 10, 11, 12, 13, 14, 15]);
+      expect(await DsaProblem.findById(ownedIds[0]).lean()).toMatchObject({
+        status: 'attempted', submissionCount: 15, lastSubmittedAt: now, solvedAt: previous,
+      });
+    });
+
+    it.each(['foreign', 'missing'])('returns 404 for a %s record with a valid status payload', async target => {
+      const id = target === 'foreign' ? foreignId : new Types.ObjectId().toHexString();
+      const response = await patch(`/problems/${id}`, { status: 'solved' });
+
+      expect(response.status).toBe(404);
+      expect(await DsaProblem.countDocuments()).toBe(3);
+      expect(await DsaProblem.findById(foreignId).lean()).toMatchObject({
+        status: 'unsolved', submissionCount: 0, solvedAt: null, lastSubmittedAt: null,
+      });
+    });
+
+    it('rejects invalid status before persisting any mixed-field changes', async () => {
+      await seedSubmissionMetadata();
+      const response = await patch(`/problems/${ownedIds[0]}`, { status: 'invalid', notes: 'Must not persist' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('VALIDATION_ERROR');
+      expect(await DsaProblem.findById(ownedIds[0]).lean()).toMatchObject({
+        status: 'solved', submissionCount: 7, notes: null, solvedAt: previous, lastSubmittedAt: previous,
+      });
+    });
+
+    it('requires authentication for individual status updates', async () => {
+      const response = await patch(`/problems/${ownedIds[0]}`, { status: 'solved' }, false);
+      expect(response.status).toBe(401);
+      expect(await DsaProblem.findById(ownedIds[0]).lean()).toMatchObject({
+        status: 'unsolved', submissionCount: 0, solvedAt: null, lastSubmittedAt: null,
+      });
+    });
+
+    it('rejects malformed IDs with a valid status without changing any record', async () => {
+      const response = await patch('/problems/invalid-id', { status: 'solved' });
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({ code: 'BAD_REQUEST', message: 'Invalid ID format' });
+      expect(await DsaProblem.countDocuments({ submissionCount: { $ne: 0 } })).toBe(0);
+    });
   });
 });

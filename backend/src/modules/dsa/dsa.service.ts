@@ -358,15 +358,16 @@ export async function updateProblem(
   if (payload.status === 'solved') {
     update.solvedAt = new Date();
     update.lastSubmittedAt = new Date();
-    update.submissionCount = { $inc: 1 };
   } else if (payload.status) {
     update.lastSubmittedAt = new Date();
-    update.submissionCount = { $inc: 1 };
   }
 
   const problem = await DsaProblem.findOneAndUpdate(
     { _id: new Types.ObjectId(problemId), userId: new Types.ObjectId(userId) },
-    update,
+    {
+      $set: update,
+      ...(payload.status ? { $inc: { submissionCount: 1 } } : {}),
+    },
     { new: true }
   ).lean();
 
