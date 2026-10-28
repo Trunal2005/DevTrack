@@ -1,0 +1,188 @@
+import express from 'express';
+import type { Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { User, UserXp, UserAnalytics, XpTransaction, DailyChallenge, DsaProblem, DsaSubmission } from '../../../db/models/index.js';
+import { checkChallengeCompletion, getTodayChallenge } from '../../../modules/daily-challenge/daily-challenge.service.js';
+import challengeRoutes from '../../../modules/daily-challenge/daily-challenge.routes.js';
+import { errorHandler } from '../../../middleware/error.js';
+import { eventBus } from '../../../shared/sse/index.js';
+
+const auth = vi.hoisted(() => ({ verify: vi.fn() }));
+// Keep auth middleware, routes, controller, services, XP processor and MongoDB real.
+// Only the identity provider and infrastructure fan-out are external boundaries.
+vi.mock('@clerk/backend', () => ({ verifyToken: auth.verify }));
+vi.mock('../../../services/auth/ClerkUserSyncService.js', () => ({ syncClerkUser: vi.fn() }));
+vi.mock('../../../shared/sse/index.js', () => ({ eventBus: {
+  emitXpUpdated: vi.fn(), emitLevelUp: vi.fn(),
+  emitChallengeCompleted: vi.fn().mockResolvedValue(undefined),
+} }));
+vi.mock('../../../shared/cache/cacheManager.js', () => ({ cacheManager: { invalidateAllUserCache: vi.fn() } }));
+vi.mock('../../../modules/runtime-state/unifiedRuntimeState.service.js', () => ({ unifiedRuntimeStateService: { updateFromEvent: vi.fn() } }));
+vi.mock('../../../shared/logger.js', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+
+const ownerId = '000000000000000000000024';
+const otherId = '000000000000000000000025';
+const now = new Date(2026, 9, 28, 12);
+const cleanups: Array<() => void> = [];
+let server: Server;
+let url: string;
+
+beforeAll(async () => {
+  await Promise.all([User.init(), UserXp.init(), UserAnalytics.init(), XpTransaction.init(), DailyChallenge.init(), DsaProblem.init(), DsaSubmission.init()]);
+  const app = express();
+  app.use('/api/v1/daily-challenge', challengeRoutes);
+  app.use(errorHandler);
+  server = await new Promise<Server>((resolve, reject) => {
+    const listener = app.listen(0, '127.0.0.1');
+    const onError = (error: Error) => { listener.off('listening', onListening); reject(error); };
+    const onListening = () => { listener.off('error', onError); resolve(listener); };
+    listener.once('error', onError);
+    listener.once('listening', onListening);
+  });
+  url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/daily-challenge/today`;
+});
+beforeEach(async () => {
+  vi.clearAllMocks();
+  vi.stubEnv('CLERK_SECRET_KEY', 'sk_test_daily_challenge');
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(now);
+  auth.verify.mockImplementation(async (token: string) => {
+    if (token !== 'owner' && token !== 'other') throw new Error('Invalid synthetic token');
+    return { sub: `clerk_${token}` };
+  });
+  await User.create([
+    { _id: ownerId, clerkId: 'clerk_owner', username: 'challengeowner', email: 'owner@example.test', displayName: 'Owner' },
+    { _id: otherId, clerkId: 'clerk_other', username: 'challengeother', email: 'other@example.test', displayName: 'Other' },
+  ]);
+  await UserXp.create([{ userId: ownerId }, { userId: otherId }]);
+});
+afterEach(() => {
+  cleanups.splice(0).forEach(release => release());
+  vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllEnvs();
+});
+afterAll(async () => {
+  if (server?.listening) await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+});
+
+async function seedChallenge(completionCount = 0) {
+  return DailyChallenge.create({ date: '2026-10-28', title: 'Two Sum', titleSlug: 'two-sum', description: 'Synthetic fixture',
+    difficulty: 'easy', platform: 'leetcode', problemUrl: 'https://leetcode.com/problems/two-sum/', xpReward: 30, completionCount });
+}
+async function seedSolve(userId = ownerId, status: 'accepted' | 'wrong' = 'accepted', titleSlug = 'two-sum') {
+  const problem = await DsaProblem.create({ userId, externalId: titleSlug, title: 'Synthetic problem', platform: 'leetcode',
+    difficulty: 'easy', category: 'arrays', url: 'https://leetcode.com/problems/two-sum/', status: 'solved' });
+  await DsaSubmission.create({ userId, problemId: problem._id, platform: 'leetcode', externalId: `submission-${userId}`,
+    language: 'typescript', status, submittedAt: now });
+}
+async function readToday(token = 'owner') {
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
+  return { status: response.status, body: await response.json() };
+}
+async function expectSingleAward(challengeId: string, expectedCount = 1) {
+  const transactions = await XpTransaction.find({ userId: ownerId, sourceType: 'challenge_completed', sourceId: challengeId });
+  expect(transactions).toHaveLength(1);
+  expect(transactions[0].xpAwarded).toBe(30);
+  expect((await UserXp.findOne({ userId: ownerId }))!.totalXp).toBe(30);
+  expect.soft((await DailyChallenge.findById(challengeId))!.completionCount).toBe(expectedCount);
+  expect(eventBus.emitChallengeCompleted).toHaveBeenCalledTimes(1);
+}
+
+function holdAbsentCompletionReads(participants: number) {
+  const findOne = XpTransaction.findOne.bind(XpTransaction);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const absent: boolean[] = [];
+  // Bound waiting even if a participant fails before reaching its precheck.
+  const timer = setTimeout(release, 5_000);
+  const cleanup = () => { clearTimeout(timer); release(); };
+  cleanups.push(cleanup);
+  vi.spyOn(XpTransaction, 'findOne').mockImplementation((...args) => {
+    const query = findOne(...args);
+    const exec = query.exec.bind(query);
+    query.exec = async () => {
+      const result = await exec(); // actual MongoDB query and snapshot
+      if (query.getFilter().sourceType === 'challenge_completed' && !query.mongooseOptions().lean && absent.length < participants) {
+        absent.push(result === null);
+        if (absent.length === participants) cleanup();
+        await gate;
+      }
+      return result;
+    };
+    return query;
+  });
+  return { absent, release: cleanup };
+}
+
+it.each([2, 3])('admits only one completion from %i overlapping checks', async participants => {
+  const challenge = await seedChallenge();
+  const barrier = holdAbsentCompletionReads(participants);
+  let results: boolean[];
+  try {
+    results = await Promise.all(Array.from({ length: participants }, () =>
+      checkChallengeCompletion(ownerId, 'leetcode', 'two-sum').catch(error => { barrier.release(); throw error; })));
+  } finally { barrier.release(); }
+  expect(barrier.absent).toEqual(Array(participants).fill(true));
+  await expectSingleAward(challenge.id);
+  expect(results.filter(Boolean)).toHaveLength(1);
+});
+
+it('deduplicates overlapping authenticated HTTP reads and preserves completed responses', async () => {
+  const challenge = await seedChallenge(); await seedSolve();
+  const barrier = holdAbsentCompletionReads(2);
+  let responses: Awaited<ReturnType<typeof readToday>>[];
+  try {
+    responses = await Promise.all(Array.from({ length: 2 }, () => readToday().catch(error => { barrier.release(); throw error; })));
+  } finally { barrier.release(); }
+  expect(barrier.absent).toEqual([true, true]);
+  expect(responses.map(response => response.status)).toEqual([200, 200]);
+  expect(responses.every(response => response.body.data.userCompleted === true)).toBe(true);
+  await expectSingleAward(challenge.id);
+  const readback = await readToday();
+  expect(readback.body.data).toMatchObject({ userCompleted: true, challenge: { completionCount: 1 } });
+  await expectSingleAward(challenge.id);
+});
+
+it.each([0, 180])('returns a fresh count on the first successful HTTP read starting at %i', async initial => {
+  const challenge = await seedChallenge(initial); await seedSolve();
+  const response = await readToday();
+  expect(response.status).toBe(200);
+  expect(response.body.data).toMatchObject({ userCompleted: true, challenge: { completionCount: initial + 1 } });
+  await expectSingleAward(challenge.id, initial + 1);
+});
+
+it('leaves a sequential completion replay inert', async () => {
+  const challenge = await seedChallenge();
+  expect(await checkChallengeCompletion(ownerId, 'LEETCODE', 'TWO-SUM')).toBe(true);
+  expect(await checkChallengeCompletion(ownerId, 'leetcode', 'two-sum')).toBe(false);
+  expect((await getTodayChallenge(ownerId)).userCompleted).toBe(true);
+  await expectSingleAward(challenge.id);
+});
+
+it('counts two different users independently', async () => {
+  const challenge = await seedChallenge(180);
+  expect(await checkChallengeCompletion(ownerId, 'leetcode', 'two-sum')).toBe(true);
+  expect(await checkChallengeCompletion(otherId, 'leetcode', 'two-sum')).toBe(true);
+  expect((await DailyChallenge.findById(challenge._id))!.completionCount).toBe(182);
+  expect(await XpTransaction.countDocuments({ sourceType: 'challenge_completed', sourceId: challenge.id })).toBe(2);
+  expect((await UserXp.findOne({ userId: ownerId }))!.totalXp).toBe(30);
+  expect((await UserXp.findOne({ userId: otherId }))!.totalXp).toBe(30);
+  expect(eventBus.emitChallengeCompleted).toHaveBeenCalledTimes(2);
+});
+
+it.each(['wrong', 'wrong-slug', 'other-owner'] as const)('does not award for a %s submission', async scenario => {
+  const challenge = await seedChallenge();
+  await seedSolve(scenario === 'other-owner' ? otherId : ownerId,
+    scenario === 'wrong' ? 'wrong' : 'accepted', scenario === 'wrong-slug' ? 'another-problem' : 'two-sum');
+  expect((await readToday()).body.data.userCompleted).toBe(false);
+  expect((await DailyChallenge.findById(challenge._id))!.completionCount).toBe(0);
+  expect(await XpTransaction.countDocuments({})).toBe(0);
+  expect(eventBus.emitChallengeCompleted).not.toHaveBeenCalled();
+});
+
+it('preserves missing-challenge and unauthenticated behavior', async () => {
+  expect(await checkChallengeCompletion(ownerId, 'leetcode', 'two-sum')).toBe(false);
+  expect((await fetch(url)).status).toBe(401);
+  expect((await readToday('invalid')).status).toBe(401);
+  expect(await DailyChallenge.countDocuments({})).toBe(0);
+  expect(await XpTransaction.countDocuments({})).toBe(0);
+});
