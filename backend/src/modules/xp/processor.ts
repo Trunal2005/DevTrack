@@ -3,7 +3,7 @@
 // All XP awards MUST flow through this module — no direct UserXp writes elsewhere.
 
 import { Types } from 'mongoose';
-import { UserXp, XpTransaction, UserAnalytics, type IUserXp } from '../../db/models/index.js';
+import { UserXp, XpTransaction, UserAnalytics, Mission, type IUserXp } from '../../db/models/index.js';
 import { eventBus } from '../../shared/sse/index.js';
 import { logger } from '../../shared/logger.js';
 import {
@@ -40,6 +40,35 @@ export interface XpProcessingResult {
 // ─── Core XP processor ───────────────────────────────────────────────────────
 
 export async function processXpEvent(payload: XpEventPayload): Promise<XpProcessingResult> {
+  return applyXpEvent(payload);
+}
+
+// Internal mission entry point: callers supply identity, never a reward amount.
+// Retain the existing manual/mission_<id> ledger key, including historical zeros.
+export async function processMissionReward(userId: string, missionId: string): Promise<XpProcessingResult> {
+  const mission = await Mission.findOne({
+    _id: new Types.ObjectId(missionId),
+    userId: new Types.ObjectId(userId),
+    status: 'completed',
+    expiresAt: { $gte: new Date() },
+  }).lean();
+
+  if (!mission || !mission.completedAt || !(mission.targetCount > 0 && mission.currentCount >= mission.targetCount)) {
+    throw new Error('Mission is not eligible for a completion reward');
+  }
+  // Generated mission rewards are whole XP points with exact numeric values.
+  if (!Number.isSafeInteger(mission.xpReward) || mission.xpReward < 0) {
+    throw new Error('Mission reward must be a nonnegative safe integer');
+  }
+
+  return applyXpEvent({
+    userId, sourceType: 'manual', sourceId: `mission_${mission._id.toString()}`,
+    metadata: { missionTitle: mission.title, missionType: mission.type, xpReward: mission.xpReward },
+  }, mission.xpReward);
+}
+
+// Only the validated mission entry point can supply this private override.
+async function applyXpEvent(payload: XpEventPayload, missionReward?: number): Promise<XpProcessingResult> {
   const { userId, sourceType, sourceId, difficulty, metadata, requestId } = payload;
   const userObjId = new Types.ObjectId(userId);
 
@@ -65,7 +94,7 @@ export async function processXpEvent(payload: XpEventPayload): Promise<XpProcess
   }
 
   // ── Step 2: Calculate XP award ───────────────────────────────────────────
-  const xpAwarded = calculateXpAward(sourceType, difficulty, metadata);
+  const xpAwarded = missionReward ?? calculateXpAward(sourceType, difficulty, metadata);
 
   // ── Step 3: Get current UserXp state (or create default) ─────────────────
   let userXp = await UserXp.findOne({ userId: userObjId });
@@ -76,6 +105,9 @@ export async function processXpEvent(payload: XpEventPayload): Promise<XpProcess
   const levelBefore = userXp.currentLevel;
   const previousTotalXp = userXp.totalXp;
   const newTotalXp = previousTotalXp + xpAwarded;
+  if (missionReward !== undefined && !Number.isSafeInteger(newTotalXp)) {
+    throw new Error('Mission reward would produce an unsafe XP total');
+  }
   const levelAfter = calculateLevel(newTotalXp);
   const leveledUp = levelAfter > levelBefore;
 
@@ -153,25 +185,14 @@ export async function processXpEvent(payload: XpEventPayload): Promise<XpProcess
   // ── Step 7: Sync to UserAnalytics ────────────────────────────────────────
   await syncUserAnalytics(userId, newTotalXp, xpAwarded, levelAfter, sourceType);
 
-  // ── Step 8: Update mission progress ──────────────────────────────────────
-  if (sourceType === 'dsa_accepted') {
-    await updateMissionProgress(userId, 'dsa_solve', { difficulty });
-  } else if (sourceType === 'dsa_contest') {
-    await updateMissionProgress(userId, 'dsa_contest');
-  } else if (sourceType === 'daily_streak') {
-    await updateMissionProgress(userId, 'streak_day');
-  } else if (sourceType === 'sync_completed') {
-    await updateMissionProgress(userId, 'sync');
-  }
-
-  // ── Step 9: Cache invalidation ───────────────────────────────────────────
+  // ── Step 8: Cache invalidation ───────────────────────────────────────────
   try {
     await cacheManager.invalidateAllUserCache(userId);
   } catch (err) {
     logger.warn('[xp] Cache invalidation failed (non-fatal)', { error: err });
   }
 
-  // ── Step 10: Runtime state sync ──────────────────────────────────────────
+  // ── Step 9: Runtime state sync ──────────────────────────────────────────
   try {
     await unifiedRuntimeStateService.updateFromEvent({
       eventId: `xp_${sourceId}_${Date.now()}`,
@@ -188,6 +209,19 @@ export async function processXpEvent(payload: XpEventPayload): Promise<XpProcess
     });
   } catch (err) {
     logger.warn('[xp] Runtime state sync failed (non-fatal)', { error: err });
+  }
+
+  // ── Step 10: Update mission progress ─────────────────────────────────────
+  // Publish the base state before a nested bonus, so an older base level cannot
+  // overwrite the bonus's level-up. Manual mission awards do not re-enter here.
+  if (sourceType === 'dsa_accepted') {
+    await updateMissionProgress(userId, 'dsa_solve', { difficulty });
+  } else if (sourceType === 'dsa_contest') {
+    await updateMissionProgress(userId, 'dsa_contest');
+  } else if (sourceType === 'daily_streak') {
+    await updateMissionProgress(userId, 'streak_day');
+  } else if (sourceType === 'sync_completed') {
+    await updateMissionProgress(userId, 'sync');
   }
 
   logger.info('[xp] XP awarded', {

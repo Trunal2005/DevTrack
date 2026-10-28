@@ -9,7 +9,7 @@ import { Mission } from '../../../db/models/index.js';
 
 // Mock XP processor
 vi.mock('../../../modules/xp/processor.js', () => ({
-  processXpEvent: vi.fn().mockResolvedValue({
+  processMissionReward: vi.fn().mockResolvedValue({
     awarded: true,
     xpAwarded: 50,
     duplicate: false,
@@ -151,16 +151,12 @@ describe('Mission Progress — updateMissionProgress', () => {
   });
 
   it('should award XP on mission completion', async () => {
-    const { processXpEvent } = await import('../../../modules/xp/processor.js');
-    await createMission({ title: 'Solve 1 DSA problem', category: 'dsa', targetCount: 1 });
+    const { processMissionReward } = await import('../../../modules/xp/processor.js');
+    const mission = await createMission({ title: 'Solve 1 DSA problem', category: 'dsa', targetCount: 1 });
 
     await updateMissionProgress(userId, 'dsa_solve', { difficulty: 'medium' });
 
-    expect(processXpEvent).toHaveBeenCalledWith(expect.objectContaining({
-      userId,
-      sourceType: 'manual',
-      sourceId: expect.stringContaining('mission_'),
-    }));
+    expect(processMissionReward).toHaveBeenCalledExactlyOnceWith(userId, mission.id);
   });
 
   it('should not count completed missions', async () => {
@@ -170,6 +166,18 @@ describe('Mission Progress — updateMissionProgress', () => {
 
     const mission = await Mission.findOne({ userId: new Types.ObjectId(userId) });
     expect(mission!.currentCount).toBe(3); // Unchanged
+  });
+
+  it('does not announce a duplicate mission reward as a newly credited bonus', async () => {
+    const { processMissionReward } = await import('../../../modules/xp/processor.js');
+    const { eventBus } = await import('../../../shared/sse/index.js');
+    await createMission({ targetCount: 1 });
+    vi.mocked(processMissionReward).mockResolvedValueOnce({
+      awarded: false, duplicate: true, xpAwarded: 0, newTotalXp: 50,
+      levelBefore: 1, levelAfter: 1, leveledUp: false,
+    });
+    await updateMissionProgress(userId, 'dsa_solve', { difficulty: 'easy' });
+    expect(eventBus.emitNotificationCreated).not.toHaveBeenCalled();
   });
 });
 

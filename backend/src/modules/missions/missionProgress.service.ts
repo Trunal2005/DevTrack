@@ -5,7 +5,7 @@ import { Types } from 'mongoose';
 import { Mission } from '../../db/models/index.js';
 import { logger } from '../../shared/logger.js';
 import { eventBus } from '../../shared/sse/index.js';
-import { processXpEvent } from '../xp/processor.js';
+import { processMissionReward } from '../xp/processor.js';
 
 export type ActivityType = 'dsa_solve' | 'dsa_contest' | 'sync' | 'streak_day' | 'project_task';
 
@@ -81,19 +81,10 @@ export async function updateMissionProgress(
 
 // ─── Mission completion handler ──────────────────────────────────────────────
 
-async function handleMissionCompletion(userId: string, mission: any): Promise<void> {
+async function handleMissionCompletion(userId: string, mission: { _id: Types.ObjectId; title: string }): Promise<void> {
   try {
-    // Award XP for mission completion
-    await processXpEvent({
-      userId,
-      sourceType: 'manual', // Missions use manual XP awards
-      sourceId: `mission_${mission._id.toString()}`,
-      metadata: {
-        missionTitle: mission.title,
-        missionType: mission.type,
-        xpReward: mission.xpReward,
-      },
-    });
+    const result = await processMissionReward(userId, mission._id.toString());
+    if (!result.awarded) return;
 
     // Emit SSE notification for mission completion
     eventBus.emitNotificationCreated(
@@ -101,7 +92,7 @@ async function handleMissionCompletion(userId: string, mission: any): Promise<vo
       `mission_completion_${mission._id.toString()}`,
       'mission_completed',
       'Mission Complete! 🎉',
-      `${mission.title} — +${mission.xpReward} XP`,
+      `${mission.title} — +${result.xpAwarded} XP`,
       'celebration',
       'medium'
     );
@@ -110,7 +101,7 @@ async function handleMissionCompletion(userId: string, mission: any): Promise<vo
       userId,
       missionId: mission._id.toString(),
       title: mission.title,
-      xpReward: mission.xpReward,
+      xpReward: result.xpAwarded,
     });
   } catch (error) {
     logger.error('[missions] Failed to handle mission completion', {
