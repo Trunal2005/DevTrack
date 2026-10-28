@@ -184,7 +184,10 @@ export async function getTodayChallenge(userId: string) {
       }).lean();
 
       if (submissionToday) {
-        await checkChallengeCompletion(userId, challenge.platform, challenge.titleSlug);
+        const newlyCompleted = await checkChallengeCompletion(userId, challenge.platform, challenge.titleSlug);
+        if (newlyCompleted) {
+          challenge.completionCount += 1;
+        }
         userCompleted = true;
       }
     }
@@ -222,7 +225,7 @@ export async function checkChallengeCompletion(userId: string, platform: string,
       });
 
       // Award XP
-      await processXpEvent({
+      const result = await processXpEvent({
         userId,
         sourceType: 'challenge_completed',
         sourceId: challengeId,
@@ -232,6 +235,9 @@ export async function checkChallengeCompletion(userId: string, platform: string,
           title: challenge.title,
         },
       });
+
+      // The XP ledger's unique key decides which concurrent caller is new.
+      if (!result.awarded) return false;
 
       // Emit SSE event
       await eventBus.emitChallengeCompleted(userId, challengeId, challenge.title, challenge.xpReward);

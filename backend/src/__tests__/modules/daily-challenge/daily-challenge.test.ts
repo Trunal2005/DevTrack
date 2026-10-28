@@ -94,6 +94,27 @@ describe('Daily Challenge — getTodayChallenge', () => {
     // it returns the existing one. But if we test in isolation:
     expect(result.challenge).toBeDefined();
   });
+
+  it('returns the incremented count immediately after detecting an accepted solve', async () => {
+    const { challenge } = await getTodayChallenge(userId);
+    const initialCount = challenge.completionCount;
+    const problem = await DsaProblem.create({
+      userId, externalId: challenge.titleSlug, title: challenge.title,
+      platform: challenge.platform, difficulty: challenge.difficulty,
+      category: 'arrays', url: challenge.problemUrl, status: 'solved',
+    });
+    await DsaSubmission.create({
+      userId, problemId: problem._id, platform: challenge.platform,
+      externalId: 'fresh-count-submission', language: 'typescript',
+      status: 'accepted', submittedAt: new Date(),
+    });
+
+    const result = await getTodayChallenge(userId);
+
+    expect(result.userCompleted).toBe(true);
+    expect(result.challenge.completionCount).toBe(initialCount + 1);
+    expect((await DailyChallenge.findById(challenge._id))!.completionCount).toBe(initialCount + 1);
+  });
 });
 
 describe('Daily Challenge — checkChallengeCompletion', () => {
@@ -167,6 +188,23 @@ describe('Daily Challenge — checkChallengeCompletion', () => {
     const result = await checkChallengeCompletion(userId, challenge!.platform, challenge!.titleSlug);
     expect(result).toBe(false);
     expect(processXpEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not count or emit when the XP processor rejects a concurrent duplicate', async () => {
+    const { processXpEvent } = await import('../../../modules/xp/processor.js');
+    const { eventBus } = await import('../../../shared/sse/index.js');
+    const { challenge } = await getTodayChallenge(userId);
+    const initialCount = challenge.completionCount;
+    vi.mocked(processXpEvent).mockResolvedValueOnce({
+      awarded: false, duplicate: true, xpAwarded: 0, newTotalXp: 30,
+      levelBefore: 1, levelAfter: 1, leveledUp: false,
+    });
+
+    const result = await checkChallengeCompletion(userId, challenge.platform, challenge.titleSlug);
+
+    expect.soft(result).toBe(false);
+    expect.soft(eventBus.emitChallengeCompleted).not.toHaveBeenCalled();
+    expect((await DailyChallenge.findById(challenge._id))!.completionCount).toBe(initialCount);
   });
 
   it('should increment completionCount on the challenge document', async () => {
