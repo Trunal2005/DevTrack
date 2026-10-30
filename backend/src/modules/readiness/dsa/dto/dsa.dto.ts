@@ -42,9 +42,9 @@ export type UpdateDSAProfileInput = z.infer<typeof UpdateDSAProfileSchema>;
 
 // Response DTOs
 export const DifficultyDistributionSchema = z.object({
-  easy: z.number().int().min(0).max(100),
-  medium: z.number().int().min(0).max(100),
-  hard: z.number().int().min(0).max(100),
+  easy: z.number().int().min(0),
+  medium: z.number().int().min(0),
+  hard: z.number().int().min(0),
   total: z.number().int().min(0),
 });
 
