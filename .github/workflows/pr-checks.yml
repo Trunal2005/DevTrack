@@ -52,7 +52,7 @@ jobs:
 
       - name: Typecheck Frontend
         working-directory: ./frontend
-        run: npx tsc --noEmit
+        run: npx tsc -b --noEmit
 
       - name: Lint Frontend
         working-directory: ./frontend
