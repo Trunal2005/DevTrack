@@ -146,8 +146,23 @@ Powered by **BullMQ** on **Redis**. Workers run in separate processes (or contai
 | `api` | — (`ENABLE_WORKERS=false`) | HTTP + SSE only |
 | `worker-sync` | `sync` | Platform crawlers |
 | `worker-xp` | `xp` | Gamification |
-| `worker-orch` | `orch` | Orchestration compensation |
-| `worker-maint` | `maint` | Maintenance |
+| `worker-resume` | `resume-intelligence` | Resume consumers and profile rebuild |
+| `worker-dataset` | `dataset` | Dataset ingestion |
+| `worker-maint` | `maintenance` | Maintenance |
+
+The standalone dispatcher accepts exactly `sync`, `xp`, `maintenance`,
+`resume-intelligence`, `dataset`, and `all`. An unset or empty selector defaults to
+`all` for local development; production services must select an explicit role.
+Unknown values fail before loading service modules or connecting to databases.
+There is no standalone orchestration-compensation consumer: `orch` and
+`orchestration` are invalid selectors. The resume role groups existing consumers;
+it does not add a new orchestration engine. `all` is the union of the five roles.
+
+Backend `worker:*` scripts use the same dispatcher with a positional selector.
+An explicit positional selector takes precedence over `WORKER_TYPE`. Shutdown
+waits for startup to settle, drains registered consumers (including XP and Phase 4),
+then disconnects MongoDB and shared Redis. Partial startup failures also drain
+registered consumers and exit nonzero; cleanup continues if one close fails.
 
 Platform sync is **idempotent**: each external submission maps to `platform + externalId` to prevent duplicates.
 
