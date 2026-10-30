@@ -36,7 +36,7 @@ export interface AppearanceSettings {
 }
 
 export interface PrivacySettings {
-  profileVisibility: 'public' | 'private' | 'friends_only';
+  profileVisibility: 'public' | 'private' | 'recruiter_only';
   showActivity: boolean;
   showStreak: boolean;
   showProjects: boolean;
@@ -61,15 +61,11 @@ export interface UserSettingsResponse {
 
 export interface UpdateSettingsPayload {
   platforms?: {
-    github?: PlatformConfig;
-    codeforces?: PlatformConfig;
-    leetcode?: PlatformConfig;
-    codechef?: PlatformConfig;
+    github?: Pick<PlatformConfig, 'username' | 'handle'>;
+    codeforces?: Pick<PlatformConfig, 'username' | 'handle'>;
+    leetcode?: Pick<PlatformConfig, 'username' | 'handle'>;
+    codechef?: Pick<PlatformConfig, 'username' | 'handle'>;
   };
-  notifications?: Partial<NotificationSettings>;
-  appearance?: Partial<AppearanceSettings>;
-  privacy?: Partial<PrivacySettings>;
-  // For profile changes, usually goes to another endpoint, but let's assume it's here or we can just mock the UI first.
 }
 
 export interface SyncGithubResponse {

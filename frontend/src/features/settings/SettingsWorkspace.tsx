@@ -11,7 +11,7 @@ import { Icon } from '../../components/shared/Icon';
 import { SETTINGS_SCHEMA } from './schemas';
 import { useSettingsStore } from '../../store/settingsStore';
 import { SettingsFieldRenderer } from './components/SettingsFieldRenderer';
-import { updateSettings } from '../../services/settingsService';
+import { isEditableSetting } from './settingsContract';
 import { useUIStore } from '../../store/uiStore';
 import { CommandPalette } from './components/CommandPalette';
 import { SystemHealthBar } from './components/SystemHealthBar';
@@ -21,12 +21,27 @@ export const SettingsWorkspace: React.FC = () => {
   const settings = useSettingsStore((s) => s.settings);
   const fetchSettings = useSettingsStore((s) => s.fetchSettings);
   const addToast = useUIStore((s) => s.addToast);
+  const theme = useUIStore((s) => s.theme);
+  const values = useSettingsStore((s) => s.values);
+  const isSaving = useSettingsStore((s) => s.isSaving);
+  const isLoading = useSettingsStore((s) => s.isLoading);
+  const hasChanges = useSettingsStore((s) => s.isDirty);
+  const error = useSettingsStore((s) => s.error);
+  const saveError = useSettingsStore((s) => s.saveError);
+  const saveSettings = useSettingsStore((s) => s.saveSettings);
+  const updateField = useSettingsStore((s) => s.updateField);
+  const discardChanges = useSettingsStore((s) => s.discardChanges);
+  const localValues = useMemo<Record<string, unknown>>(() => {
+    const flattened: Record<string, unknown> = {};
+    for (const section of SETTINGS_SCHEMA) for (const group of section.groups) for (const field of group.fields) {
+      flattened[field.id] = field.id.split('.').reduce<unknown>((value, part) =>
+        value && typeof value === 'object' ? (value as Record<string, unknown>)[part] : undefined, settings) ?? '';
+    }
+    return { ...flattened, ...values, 'appearance.theme': theme };
+  }, [settings, values, theme]);
 
   const [activeSection, setActiveSection] = useState(SETTINGS_SCHEMA[0].id);
   const [searchQuery, setSearchQuery] = useState('');
-  const [localValues, setLocalValues] = useState<Record<string, unknown>>({});
-  const [isSaving, setIsSaving] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showRecommendations, setShowRecommendations] = useState(true);
 
@@ -37,58 +52,26 @@ export const SettingsWorkspace: React.FC = () => {
   const recommendations = useMemo(() => {
     if (!settings) return [];
     // In production, pass actual userActivity
-    return generateRecommendations(settings);
+    return generateRecommendations(settings).filter(item => !item.action || isEditableSetting(item.action.settingId));
   }, [settings]);
 
-  // === PHASE 3: PREMIUM SAVE EXPERIENCE ===
-  // Auto-save with debounce
   const handleAutoSave = useCallback(async () => {
-    if (!hasChanges || isSaving) return;
-
-    setIsSaving(true);
-     
-    const payload: any = {};
-
-    const setNestedValue = (obj: Record<string, unknown>, path: string, val: unknown) => {
-      const parts = path.split('.');
-      let current: unknown = obj;
-      for (let i = 0; i < parts.length - 1; i++) {
-        if (typeof current !== 'object' || current === null) break;
-        const record = current as Record<string, unknown>;
-        if (!record[parts[i]]) record[parts[i]] = {};
-        current = record[parts[i]];
-      }
-      if (typeof current === 'object' && current !== null) {
-        (current as Record<string, unknown>)[parts[parts.length - 1]] = val;
-      }
-    };
-
-    Object.entries(localValues).forEach(([key, value]) => {
-      setNestedValue(payload, key, value);
-    });
-
-    try {
-      await updateSettings(payload);
-      await fetchSettings();
-      setHasChanges(false);
-      addToast({ type: 'success', title: 'Auto-saved', message: 'Your changes have been synced.', duration: 2000 });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Could not save settings.';
-      addToast({ type: 'error', title: 'Save Failed', message });
-    } finally {
-      setIsSaving(false);
+    await saveSettings();
+    const current = useSettingsStore.getState();
+    if (current.saveSuccess && !current.isDirty) {
+      addToast({ type: 'success', title: 'Saved', message: 'Your platform settings have been saved.', duration: 2000 });
     }
-  }, [localValues, hasChanges, isSaving, fetchSettings, addToast]);
+  }, [saveSettings, addToast]);
 
   // Auto-save after 2 seconds of inactivity
   useEffect(() => {
-    if (hasChanges && !isSaving) {
+    if (hasChanges && !isSaving && !saveError) {
       saveTimeoutRef.current = setTimeout(handleAutoSave, 2000);
     }
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [hasChanges, isSaving, handleAutoSave]);
+  }, [hasChanges, isSaving, saveError, values, handleAutoSave]);
 
   // Keyboard shortcut for command palette (Cmd+K / Ctrl+K)
   useEffect(() => {
@@ -105,39 +88,9 @@ export const SettingsWorkspace: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Initialize settings
   useEffect(() => {
-    if (!settings) {
-      fetchSettings();
-    }
-  }, [settings, fetchSettings]);
-
-  // Flatten settings into local values
-  useEffect(() => {
-    if (!settings) return;
-    const flattened: Record<string, unknown> = {};
-    const getNestedValue = (obj: unknown, path: string): unknown => {
-      return path.split('.').reduce((acc, part) => {
-        if (typeof acc !== 'object' || acc === null) return undefined;
-        return (acc as Record<string, unknown>)[part];
-      }, obj);
-    };
-
-    SETTINGS_SCHEMA.forEach(section => {
-      section.groups.forEach(group => {
-        group.fields.forEach(field => {
-          flattened[field.id] = getNestedValue(settings, field.id) ?? '';
-        });
-      });
-    });
-
-    if (!flattened['appearance.theme']) {
-      flattened['appearance.theme'] = useUIStore.getState().theme;
-    }
-
-    setLocalValues(flattened);
-    setHasChanges(false);
-  }, [settings]);
+    if (!settings && !isLoading && !error) void fetchSettings();
+  }, [settings, isLoading, error, fetchSettings]);
 
   // Filter sections based on search
   const filteredSections = useMemo(() => {
@@ -157,13 +110,12 @@ export const SettingsWorkspace: React.FC = () => {
     }).filter(section => section.groups.length > 0 || section.title.toLowerCase().includes(lowerQuery));
   }, [searchQuery]);
 
-  // === PHASE 1: Track recent changes ===
   const handleFieldChange = (id: string, value: unknown) => {
-    setLocalValues(prev => ({ ...prev, [id]: value }));
-    setHasChanges(true);
     if (id === 'appearance.theme' && (value === 'light' || value === 'dark' || value === 'system')) {
       useUIStore.getState().setTheme(value);
+      return;
     }
+    updateField(id, value);
   };
 
   const handleCommandPaletteNavigate = (sectionId: string, fieldId?: string) => {
@@ -175,11 +127,6 @@ export const SettingsWorkspace: React.FC = () => {
       }, 100);
     }
     setSearchQuery('');
-  };
-
-  const handleCommandPaletteUpdate = (settingId: string, value: unknown) => {
-    setLocalValues(prev => ({ ...prev, [settingId]: value }));
-    setHasChanges(true);
   };
 
   const activeSectionData = filteredSections.find(s => s.id === activeSection) || filteredSections[0];
@@ -199,6 +146,10 @@ export const SettingsWorkspace: React.FC = () => {
 
   return (
     <div className="max-w-[1200px] mx-auto pb-24">
+      {!settings && isLoading && <p role="status">Loading settings…</p>}
+      {error && <div role="alert">{error} <button type="button" onClick={() => void fetchSettings()}>Retry loading</button></div>}
+      {saveError && <p role="alert">{saveError}</p>}
+      <p className="px-4 text-sm text-dt-textSecondary">Platform usernames save to your account. Theme is saved in this browser. Other settings are not available yet.</p>
       {/* Top Header */}
       <div className="sticky top-0 z-30 pt-6 pb-6 bg-dt-bg/90 backdrop-blur-xl border-b border-dt-primary/5 flex items-center justify-between mb-8 px-4">
         <div>
@@ -371,7 +322,8 @@ export const SettingsWorkspace: React.FC = () => {
                       const hint = getSettingHint(field.id, localValues[field.id]);
 
                       return (
-                        <div key={field.id} id={`field-${field.id}`}>
+                        <fieldset key={field.id} id={`field-${field.id}`} aria-label={field.label} disabled={!isEditableSetting(field.id) || (field.id !== 'appearance.theme' && (!settings || isLoading))}>
+                          {!isEditableSetting(field.id) && <p className="text-xs text-dt-textSecondary">Not available yet</p>}
                           <SettingsFieldRenderer
                             field={field}
                             value={localValues[field.id]}
@@ -391,7 +343,7 @@ export const SettingsWorkspace: React.FC = () => {
                               </motion.div>
                             )}
                           </AnimatePresence>
-                        </div>
+                        </fieldset>
                       );
                     })}
                   </div>
@@ -451,7 +403,7 @@ export const SettingsWorkspace: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  fetchSettings();
+                  discardChanges();
                 }}
                 disabled={isSaving}
                 className="px-5 py-2.5 text-sm font-bold text-dt-textSecondary/70 hover:text-dt-text hover:bg-black/5 rounded-full transition-all active:scale-95"
@@ -492,7 +444,7 @@ export const SettingsWorkspace: React.FC = () => {
         isOpen={showCommandPalette}
         onClose={() => setShowCommandPalette(false)}
         onNavigate={handleCommandPaletteNavigate}
-        onUpdateSetting={handleCommandPaletteUpdate}
+        onUpdateSetting={handleFieldChange}
         currentSettings={localValues}
       />
     </div>
