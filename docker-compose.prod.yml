@@ -5,7 +5,8 @@
 #   api            — Express HTTP server + SSE gateway (no workers)
 #   worker-sync    — Platform sync BullMQ worker
 #   worker-xp      — XP processing BullMQ worker
-#   worker-orch    — Orchestration compensation worker
+#   worker-resume  — Resume intelligence consumers
+#   worker-dataset — Dataset ingestion consumer
 #   worker-maint   — Maintenance/cleanup worker
 #   redis          — Redis 7 for queues, caching, SSE pub/sub
 #   mongo          — MongoDB 7 for persistent storage
@@ -80,12 +81,26 @@ services:
           memory: 256M
           cpus: '0.5'
 
-  # ─── Orchestration Worker ───────────────────────────────────────────────
-  worker-orch:
+  # ─── Resume Intelligence Workers ────────────────────────────────────────
+  worker-resume:
     <<: *backend-base
     command: ["node", "dist/worker-entrypoint.js"]
     environment:
-      - WORKER_TYPE=orchestration
+      - WORKER_TYPE=resume-intelligence
+      - NODE_ENV=production
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+
+  # ─── Dataset Ingestion Worker ───────────────────────────────────────────
+  worker-dataset:
+    <<: *backend-base
+    command: ["node", "dist/worker-entrypoint.js"]
+    environment:
+      - WORKER_TYPE=dataset
       - NODE_ENV=production
     deploy:
       replicas: 1
