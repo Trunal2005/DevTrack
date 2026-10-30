@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageShell } from '../components/layout/PageShell';
 import { ProfileHeader } from '../components/profile/ProfileHeader';
@@ -10,7 +10,7 @@ import { LeetCodeStatsCard, CodeforcesStatsCard, CodeChefStatsCard, GithubStatsC
 import { ProfileAchievementsCard } from '../components/profile/ProfileAchievementsCard';
 import { SocialProfilesCard } from '../components/profile/SocialProfilesCard';
 import { useProfileStore } from '../store/profileStore';
-import { useUserStore } from '../store/userStore';
+import { useLogout } from '../hooks/useLogout';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { Icon } from '../components/shared/Icon';
 import { getPublicProfile } from '../services/profileService';
@@ -22,9 +22,8 @@ interface ProfilePageProps {
 }
 
 const ProfilePage: React.FC<ProfilePageProps> = ({ isPublicView = false }) => {
-  const navigate = useNavigate();
   const { username } = useParams<{ username: string }>();
-  const logoutCleanup = useUserStore((s) => s.logoutCleanup);
+  const { logout, isLoggingOut } = useLogout('/');
   const {
     profile,
     leetcode,
@@ -263,14 +262,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ isPublicView = false }) => {
             <div className="profile-action-bar__left">
               <button
                 type="button"
-                onClick={async () => {
-                  await logoutCleanup();
-                  navigate('/');
-                }}
-                className="profile-btn-terminate"
+                onClick={logout}
+                disabled={isLoggingOut}
+                aria-busy={isLoggingOut}
+                aria-label={isLoggingOut ? 'Signing out' : 'Terminate Session'}
+                className="profile-btn-terminate disabled:opacity-50 disabled:cursor-wait"
               >
                 <Icon name="log-out" size={16} />
-                <span>Terminate Session</span>
+                <span>{isLoggingOut ? 'Signing out…' : 'Terminate Session'}</span>
               </button>
             </div>
 
