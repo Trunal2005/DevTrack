@@ -1,9 +1,8 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Flame } from 'lucide-react';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { fetchDsaContests } from '../services/dsaService';
-import { useUserStore } from '../store/userStore';
+import { useLogout } from '../hooks/useLogout';
 import { type ApiDsaContestEntry } from '../types/api.types';
 import { DashboardHeader } from '../components/dashboard/DashboardHeader';
 import { StatsGrid } from '../components/dashboard/StatsGrid';
@@ -35,8 +34,7 @@ const SectionHeader: React.FC<{ icon: string; title: string; subtitle: string }>
 const DashboardPage: React.FC = () => {
   const { data, loading, error } = useDashboardData();
   const { challenge } = useDailyChallenge();
-  const navigate = useNavigate();
-  const logoutCleanup = useUserStore((s) => s.logoutCleanup);
+  const { logout, isLoggingOut } = useLogout('/login');
   const [contests, setContests] = React.useState<{ name: string; platform: string; time: string }[]>([]);
 
   const lastSevenDays = React.useMemo(() => {
@@ -60,11 +58,6 @@ const DashboardPage: React.FC = () => {
     }
     return days;
   }, [data?.streakData]);
-
-  const handleLogout = async () => {
-    await logoutCleanup();
-    navigate('/login');
-  };
 
   React.useEffect(() => {
     const loadContests = async () => {
@@ -116,10 +109,13 @@ const DashboardPage: React.FC = () => {
               Try Again
             </button>
             <button
-              onClick={handleLogout}
-              className="w-full py-3 rounded-xl bg-gray-50 text-red-500 font-semibold hover:bg-red-50 transition-all border border-gray-200 hover:border-red-100"
+              type="button"
+              onClick={logout}
+              disabled={isLoggingOut}
+              aria-busy={isLoggingOut}
+              className="w-full py-3 rounded-xl bg-gray-50 text-red-500 font-semibold hover:bg-red-50 transition-all border border-gray-200 hover:border-red-100 disabled:opacity-50 disabled:cursor-wait"
             >
-              Log Out
+              {isLoggingOut ? 'Signing out…' : 'Log Out'}
             </button>
           </div>
         </div>
