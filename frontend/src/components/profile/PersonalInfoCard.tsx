@@ -57,6 +57,7 @@ export const PersonalInfoCard: React.FC<PersonalInfoCardProps> = React.memo(({ p
             id="profile-location"
             className="profile-form-input"
             type="text"
+            maxLength={100}
             placeholder="e.g. Seattle, WA"
             value={profile.location}
             onChange={(e) => onUpdate('location', e.target.value)}

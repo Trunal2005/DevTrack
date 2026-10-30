@@ -21,6 +21,7 @@ export async function getProfile(userId: string): Promise<ApiUserProfile | null>
     joinedAt: user.joinedAt.toISOString(),
     lastActiveAt: user.lastActiveAt.toISOString(),
     roleTitle: profile?.roleTitle || null,
+    location: profile?.location || null,
     targetRole: profile?.targetRole || null,
     targetCompanies: profile?.targetCompanies || [],
     techStack: profile?.techStack || [],
@@ -49,6 +50,10 @@ export async function updateProfile(userId: string, payload: ApiProfileUpdatePay
   // Update profile fields
   const profileUpdate: any = {};
   if (payload.roleTitle !== undefined) profileUpdate.roleTitle = payload.roleTitle;
+  if (payload.location !== undefined) profileUpdate.location = payload.location?.trim() || null;
+  if (payload.techStack !== undefined) {
+    profileUpdate.techStack = [...new Set(payload.techStack.map(tag => tag.trim()).filter(Boolean))];
+  }
   if (payload.targetRole !== undefined) profileUpdate.targetRole = payload.targetRole;
   if (payload.targetCompanies !== undefined) profileUpdate.targetCompanies = payload.targetCompanies;
   if (payload.socialLinks !== undefined) profileUpdate.socialLinks = payload.socialLinks;
