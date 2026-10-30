@@ -1,0 +1,20 @@
+name: Windows runtime ownership
+on:
+  pull_request:
+    paths:
+      - 'start-dev.ps1'
+      - 'scripts/OwnedRuntime*'
+      - 'dev-orchestrator/src/utils/RuntimeCleaner.ts'
+      - '.github/workflows/dev-runtime-windows.yml'
+jobs:
+  owned-runtime:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify process ownership and unrelated Node survival
+        shell: powershell
+        run: ./scripts/OwnedRuntime.test.ps1

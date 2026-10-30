@@ -9,6 +9,7 @@ param(
 
 $ErrorActionPreference = "Continue"
 $ProjectRoot = $PSScriptRoot
+. (Join-Path $ProjectRoot "scripts\OwnedRuntime.ps1")
 
 function Write-Banner {
     param([string]$Text)
@@ -70,7 +71,7 @@ if ($StopAll) {
     Write-Banner "Stopping All Services"
 
     Write-Info "Stopping node processes..."
-    taskkill /F /IM node.exe /T 2>$null
+    [DevTrack.OwnedRuntime]::Stop((Get-DevTrackJobName $ProjectRoot)) | Out-Null
 
     if (-not $SkipDocker) {
         Write-Info "Stopping Docker containers..."
@@ -148,16 +149,14 @@ if ($ShowStatus) {
     exit 0
 }
 
-# Kill any existing DevTrack processes to avoid port conflicts
-Write-Banner "Checking for Existing Processes"
-$existingProcesses = Get-Process -Name "node" -ErrorAction SilentlyContinue
-if ($existingProcesses) {
-    Write-Info "Stopping $(@($existingProcesses).Count) existing node process(es)..."
-    taskkill /F /IM node.exe /T 2>$null
-    Start-Sleep -Seconds 2
-    Write-Success "Cleaned up existing processes"
+# Stop only the kernel-owned runtime for this checkout.
+[DevTrack.OwnedRuntime]::Stop((Get-DevTrackJobName $ProjectRoot)) | Out-Null
+$ownedRuntime = $null
+for ($attempt = 0; $attempt -lt 40; $attempt++) {
+    try { $ownedRuntime = [DevTrack.OwnedRuntime]::new((Get-DevTrackJobName $ProjectRoot)); break }
+    catch { if ($_.Exception.Message -notlike "*already starting/running*" -or $attempt -eq 39) { throw }; Start-Sleep -Milliseconds 100 }
 }
-
+try {
 # Start all services
 Write-Banner "DevTrack Development Environment"
 
@@ -237,7 +236,7 @@ if (-not ($rootHasModules -and $backendHasModules -and $frontendHasModules -and 
 Write-Banner "Starting Backend"
 Write-Info "Starting backend server (http://localhost:3001)..."
 Push-Location $ProjectRoot
-Start-Process -FilePath "cmd.exe" -ArgumentList "/c npm run dev:backend" -NoNewWindow -PassThru | Out-Null
+$ownedRuntime.Start($env:ComSpec, "/d /s /c npm run dev:backend", $ProjectRoot)
 Pop-Location
 
 # Wait for backend to be ready
@@ -265,14 +264,14 @@ if (-not $backendStarted) {
 Write-Banner "Starting Background Workers"
 Write-Info "Starting BullMQ / background workers..."
 Push-Location $ProjectRoot
-Start-Process -FilePath "cmd.exe" -ArgumentList "/c npm run dev:workers" -NoNewWindow -PassThru | Out-Null
+$ownedRuntime.Start($env:ComSpec, "/d /s /c npm run dev:workers", $ProjectRoot)
 Pop-Location
 
 # Step 5: Frontend
 Write-Banner "Starting Frontend"
 Write-Info "Starting frontend server..."
 Push-Location $ProjectRoot
-Start-Process -FilePath "cmd.exe" -ArgumentList "/c npm run dev:frontend" -NoNewWindow -PassThru | Out-Null
+$ownedRuntime.Start($env:ComSpec, "/d /s /c npm run dev:frontend", $ProjectRoot)
 Pop-Location
 
 # Wait for frontend to be ready
@@ -352,7 +351,8 @@ Write-Host ""
 
 # Wait for user interrupt
 try {
-    while ($true) { Start-Sleep -Seconds 1 }
+    while ($ownedRuntime.IsActive()) { Start-Sleep -Seconds 1 }
 } finally {
     Write-Host "`nShutting down..."
 }
+} finally { $ownedRuntime.Dispose() }

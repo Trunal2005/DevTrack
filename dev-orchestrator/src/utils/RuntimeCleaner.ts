@@ -1,7 +1,10 @@
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
+import { fileURLToPath } from 'url';
+import { resolve, dirname } from 'path';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export class RuntimeCleaner {
   async clean(): Promise<void> {
@@ -16,15 +19,15 @@ export class RuntimeCleaner {
   }
 
   private async killStaleProcesses(): Promise<void> {
-    console.log('Killing stale processes...');
-
-    try {
-      // Kill node processes that might be stale
-      await execAsync('taskkill /F /IM node.exe 2>nul || echo No stale node processes found');
-      console.log('✓ Stale processes cleaned');
-    } catch (error) {
-      console.log('No stale processes to clean');
+    if (process.platform !== 'win32') {
+      console.log('No Windows-owned runtime; untracked processes left running.');
+      return;
     }
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+    const { stdout } = await execFileAsync('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-File', resolve(root, 'scripts/OwnedRuntime.ps1'), '-Stop', '-Root', root,
+    ], { windowsHide: true });
+    console.log(stdout.trim());
   }
 
   private async clearRedisQueues(): Promise<void> {
