@@ -561,6 +561,7 @@ export interface ApiUserProfile {
   joinedAt: string;
   lastActiveAt: string;
   roleTitle: string | null;
+  location: string | null;
   targetRole: string | null;
   targetCompanies: string[];
   techStack: string[];
@@ -628,6 +629,8 @@ export interface ApiProfileUpdatePayload {
   bio?: string;
   timezone?: string;
   roleTitle?: string | null;
+  location?: string | null;
+  techStack?: string[];
   targetRole?: string | null;
   targetCompanies?: string[];
   socialLinks?: Partial<ApiSocialLinks>;

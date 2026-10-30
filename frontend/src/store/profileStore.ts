@@ -14,17 +14,8 @@ import {
   getProfile as getProfileApi,
   updateProfile as updateProfileApi
 } from '../services/profileService';
-import type { ApiPlatformStats, ApiUserProfile } from '../types/api.types';
+import type { ApiPlatformStats, ApiUserProfile, ApiProfileUpdatePayload } from '../types/api.types';
 import { type GithubDashboardStats } from '../services/dashboardService';
-
-// ─── Extended API Profile Interface ────────────────────────────────────────
-interface ExtendedApiUserProfile extends ApiUserProfile {
-  roleTitle?: string;
-  location?: string;
-  targetRole?: string;
-  targetCompanies?: string[];
-  techStack?: string[];
-}
 
 // ---------------------------------------------------------------------------
 // STORE INTERFACE
@@ -53,6 +44,7 @@ interface ProfileStore {
   // Dirty tracking
   isDirty: boolean;
   isSaving: boolean;
+  saveError: string | null;
   isLoading: boolean;
 
   // Actions: Profile editing
@@ -75,7 +67,7 @@ interface ProfileStore {
 // ---------------------------------------------------------------------------
 
 function mapApiToProfileData(api: ApiUserProfile): ProfileData {
-  const a = api as ExtendedApiUserProfile;
+  const a = api;
   return {
     fullName: api.displayName,
     email: api.email,
@@ -94,11 +86,13 @@ function mapApiToProfileData(api: ApiUserProfile): ProfileData {
   };
 }
 
-function mapProfileDataToApi(data: ProfileData) {
+function mapProfileDataToApi(data: ProfileData): ApiProfileUpdatePayload {
   return {
     displayName: data.fullName,
     bio: data.bio,
     roleTitle: data.role,
+    location: data.location,
+    techStack: data.techStack,
     targetRole: data.targetRole,
     targetCompanies: data.targetCompanies.split(',').map(s => s.trim()).filter(Boolean),
     socialLinks: {
@@ -134,19 +128,23 @@ export const useProfileStore = create<ProfileStore>((set, get) => ({
 
   isDirty: false,
   isSaving: false,
+  saveError: null,
   isLoading: false,
 
   // ─── Fetch profile from API ──────────────────────────────────────────
   fetchProfile: async () => {
+    const startedWith = get().profile;
     set({ isLoading: true });
     try {
       const response = await getProfileApi();
       const apiProfile = response.data.data as ApiUserProfile;
-      set({
+      // A delayed load must not discard edits made after it started.
+      set(state => state.profile === startedWith ? {
         profile: mapApiToProfileData(apiProfile),
         isDirty: false,
-        isLoading: false
-      });
+        saveError: null,
+        isLoading: false,
+      } : { isLoading: false });
     } catch (error) {
       console.error('Failed to fetch profile:', error);
       set({ isLoading: false });
@@ -155,15 +153,22 @@ export const useProfileStore = create<ProfileStore>((set, get) => ({
 
   // ─── Save profile to API ────────────────────────────────────────────
   saveProfile: async () => {
+    if (get().isSaving) return;
     const { profile } = get();
-    set({ isSaving: true });
+    set({ isSaving: true, saveError: null });
     try {
       const payload = mapProfileDataToApi(profile);
-      await updateProfileApi(payload);
-      set({ isDirty: false, isSaving: false });
+      const response = await updateProfileApi(payload);
+      const savedProfile = mapApiToProfileData(response.data.data as ApiUserProfile);
+      set(state => ({
+        profile: state.profile === profile ? savedProfile : state.profile,
+        isDirty: state.profile === profile ? false : state.isDirty,
+        isSaving: false,
+        saveError: null,
+      }));
     } catch (error) {
       console.error('Failed to save profile:', error);
-      set({ isSaving: false });
+      set({ isSaving: false, saveError: 'Could not save profile. Your changes are still unsaved. Please check the fields and try again.' });
     }
   },
 

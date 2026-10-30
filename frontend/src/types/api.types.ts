@@ -500,6 +500,11 @@ export interface ApiUserProfile {
   joinedAt: string;
   lastActiveAt: string;
   socialLinks: ApiSocialLinks;
+  location?: string | null;
+  roleTitle?: string | null;
+  targetRole?: string | null;
+  targetCompanies?: string[];
+  techStack?: string[];
 }
 
 export interface ApiSocialLinks {
@@ -562,6 +567,11 @@ export interface ApiProfileUpdatePayload {
   displayName?: string;
   bio?: string;
   timezone?: string;
+  location?: string | null;
+  roleTitle?: string | null;
+  targetRole?: string | null;
+  targetCompanies?: string[];
+  techStack?: string[];
   socialLinks?: Partial<ApiSocialLinks>;
 }
 

@@ -35,6 +35,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ isPublicView = false }) => {
     lastSyncedAt,
     isDirty,
     isSaving,
+    saveError,
     isLoading: isProfileLoading,
     fetchProfile,
     saveProfile,
@@ -253,6 +254,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ isPublicView = false }) => {
         {/* ─── 7. Global Action Bar (Sticky) ─────────────────────────── */}
         {!isPublicView && (
           <div className="profile-sticky-footer">
+            {saveError && <p role="alert" className="text-sm text-red-600 mb-2">{saveError}</p>}
             <motion.div
               className="profile-action-bar"
               initial={{ y: 50, opacity: 0 }}
