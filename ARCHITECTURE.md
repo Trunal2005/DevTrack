@@ -237,6 +237,26 @@ React Router v7 with lazy-loaded pages and `ErrorBoundary` wrappers. Protected r
 
 ---
 
+### Settings write contract
+
+The authenticated settings GET endpoint returns stored preferences, while PUT
+currently accepts only `platforms` with `github`, `codeforces`, `leetcode` and
+`codechef` objects. Each accepts optional string `username` and `handle` fields
+limited to 100 characters; empty strings clear identifiers. The server rejects
+unknown categories, invalid values, empty writes and client-supplied metadata
+such as `lastSyncedAt`. Omitted fields remain unchanged.
+
+The settings screen sends only changed supported platform fields. It keeps drafts
+and saved values separately, uses per-field revisions to retain later edits during
+a write, blocks competing writes, and ignores stale loads or responses after a
+store reset. Failed saves preserve edits and stop automatic retries until a new
+edit or explicit Save Now. Discard restores the saved platform values locally.
+
+Theme uses the existing browser-local store independently of account saves.
+Other rendered settings and destructive actions are disabled until implemented;
+command-palette shortcuts cannot toggle unavailable settings. A stored preference
+in a GET response does not imply the current API supports editing or applying it.
+
 ## Platform Integrations
 
 | Platform | Method | Coverage |

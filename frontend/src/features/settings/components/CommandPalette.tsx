@@ -9,6 +9,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { Icon } from '../../../components/shared/Icon';
 import { SETTINGS_SCHEMA } from '../schemas';
+import { isEditableSetting } from '../settingsContract';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -76,7 +77,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
         group.fields.forEach(field => {
           // Determine if this is a toggleable field
-          const isToggle = field.type === 'toggle';
+          const isToggle = field.type === 'toggle' && isEditableSetting(field.id);
           const currentValue = currentSettings[field.id];
           const isEnabled = isToggle && currentValue === true;
 
