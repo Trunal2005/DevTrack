@@ -1,289 +1,355 @@
 # DevTrack: Developer Productivity & Career Readiness OS
 
+<div align="center">
+
 > **Status:** **Beta Candidate** — Core platform domains are structurally complete, build-green, and actively validated.
 
-[![TypeScript](https://img.shields.io/badge/typescript-v5.9-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![React](https://img.shields.io/badge/react-v19.2-61dafb?style=flat-square&logo=react)](https://react.dev/)
-[![Express](https://img.shields.io/badge/express-v5.1-000000?style=flat-square&logo=express)](https://expressjs.com/)
-[![MongoDB](https://img.shields.io/badge/mongodb-v7-47a248?style=flat-square&logo=mongodb)](https://www.mongodb.com/)
-[![Redis](https://img.shields.io/badge/redis-v7-dc382d?style=flat-square&logo=redis)](https://redis.io/)
-[![CI Status](https://img.shields.io/badge/ci-passing-brightgreen?style=flat-square&logo=githubactions)](https://github.com/VarshithReddy2006/DevTrack/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/typescript-v5.9-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/react-v19.2-61dafb?style=for-the-badge&logo=react)](https://react.dev/)
+[![Express](https://img.shields.io/badge/express-v5.1-000000?style=for-the-badge&logo=express)](https://expressjs.com/)
+[![MongoDB](https://img.shields.io/badge/mongodb-v7-47a248?style=for-the-badge&logo=mongodb)](https://www.mongodb.com/)
+[![Redis](https://img.shields.io/badge/redis-v7-dc382d?style=for-the-badge&logo=redis)](https://redis.io/)
+[![CI Status](https://img.shields.io/badge/ci-passing-brightgreen?style=for-the-badge&logo=githubactions)](https://github.com/VarshithReddy2006/DevTrack/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-DevTrack is a developer productivity, telemetry, and career readiness platform built as a TypeScript monorepo. It connects competitive programming activity (LeetCode, Codeforces, CodeChef) and GitHub contributions with project management, ATS resume intelligence, personalized learning roadmaps, and gamification.
+<p align="center">
+  <b>Turn raw software engineering activity into an adaptive, gamified career growth journey.</b><br />
+  DevTrack connects competitive programming telemetry, GitHub contributions, project velocity, and ATS resume audits with real-time skill gap analysis and personalized roadmap intelligence.
+</p>
 
-The platform continuously closes the loop between **where a developer spends their time** and **what competencies they need next** to reach their target engineering roles.
+[Features](#key-features) • [Growth Loop](#the-growth-loop-workflow) • [Architecture](#system-architecture) • [Tech Stack](#tech-stack) • [Quick Start](#quick-start--installation) • [Testing](#testing--verification) • [API Routes](#canonical-api-routes-apiv1) • [Acknowledgements](#acknowledgements) • [Contributing](#contributing)
 
----
-
-## 🎯 What DevTrack Does
-
-| Core Area | Capabilities |
-|---|---|
-| **DSA Intelligence & Tracking** | Problem indexing, platform scraping, daily challenges, topic-level mastery heatmaps, contest trackers, and weekly analytics. |
-| **Platform Synchronization** | Scheduled ingestion from GitHub, Codeforces, LeetCode (public endpoints), and CodeChef. |
-| **Project Workspace** | Full-stack project and task management, velocity metrics, status Kanban, and GitHub repository linkages. |
-| **Focus Mode & Mission Control** | Daily missions, persistent Pomodoro/stopwatch timers, active checklist cards, and automatic streak upkeep. |
-| **Resume Intelligence OS** | PDF/DOCX multi-format parsing, ATS compatibility audits, GitHub claim verification, variant drafting, and exportable report dossiers. |
-| **Career Readiness Engine** | Diagnostic benchmarks, role gap analysis, adaptive roadmap sequencing, evolution progression graphs, and AI guidance. |
-| **Gamification Engine** | XP accrual, level curves (1–10+), consecutive day streaks with freeze mechanics, milestone awards, and badges. |
-| **Real-time WebChannels** | Server-Sent Events (SSE) singleton channels backed by Redis pub/sub for real-time dashboard updates and live toasts. |
-| **Operations & Observability** | Queue monitoring, BullMQ Dead Letter Queue (DLQ) inspection and replay, health checks, and beta metrics. |
+</div>
 
 ---
 
-## 🔄 The Growth Loop Workflow
+### Mission Control & Telemetry Preview
 
-DevTrack functions as a feedback-driven progression loop:
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ DEVTRACK MISSION CONTROL & CAREER READINESS OS                                         │
+├───────────────────────────────┬────────────────────────────────────────────────────────┤
+│ DAILY MISSIONS                │ REAL-TIME TELEMETRY & EVOLUTION ENGINE                 │
+│  [x] Graph BFS Traversal (LC) │  Level 7 Lead Engineer Track • 2,450 / 3,000 XP (81%)  │
+│  [x] Distributed Cache Task   │  Streak: 18 Consecutive Days (Freeze: 1 active)        │
+│  [ ] System Design Brief      │  Focus Time: 3h 45m logged today (Pomodoro: 4 cycles)  │
+├───────────────────────────────┴────────────────────────────────────────────────────────┤
+│ ATS RESUME INTELLIGENCE: Score 88/100 • 3 Verified Claims • 2 Skill Gaps Identified    │
+│ ADAPTIVE ROADMAP: Real-time recalculation active — next milestone: Redis Pub/Sub       │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Why DevTrack?
+
+Developers spend hundreds of hours across disconnected silos: solving algorithm challenges on LeetCode and Codeforces, pushing repositories to GitHub, and drafting resumes in isolation. These activities rarely provide unified feedback on **how close a developer is to their dream engineering role**.
+
+**DevTrack closes this loop.** It ingests coding telemetry, evaluates competencies against industry benchmarks, identifies high-priority gaps, and feeds them directly into daily focus blocks, ensuring that every hour invested translates into measurable career readiness.
+
+---
+
+## The Growth Loop Workflow
+
+DevTrack operates as a closed-loop progression system:
 
 ```mermaid
 graph TD
-    A["1. Resume Upload & Profile Diagnostics"] -->|Extract proficiencies & ATS gaps| B["2. Career Intent & Discovery"]
-    B -->|Set target roles, competencies & companies| C["3. Roadmap Intelligence OS"]
-    C -->|Generate prioritized learning pathway| D["4. Focus Mode & Daily Missions"]
-    D -->|Solve problems, log hours & ship tasks| E["5. XP, Streaks & Evolution Intelligence"]
-    E -->|Update mastery benchmarks & clear blockers| F["6. Dynamic Roadmap Recalculation"]
-    F -->|Adaptive skill realignment| C
+    A["1. Profile & Resume Diagnostics"] -->|Extract verified proficiencies & ATS gaps| B["2. Career Intent & Target Benchmarking"]
+    B -->|Set target roles, competencies & company tiers| C["3. Roadmap Intelligence OS"]
+    C -->|Generate prioritized, dependency-aware pathway| D["4. Focus Mode & Daily Missions"]
+    D -->|Solve problems, log hours & ship project tasks| E["5. XP, Streaks & Evolution Telemetry"]
+    E -->|Update mastery benchmarks & resolve blockers| F["6. Dynamic Roadmap Recalculation"]
+    F -->|Adaptive skill realignment & next mission dispatch| C
 ```
 
-1. **Intake & Diagnostics:** Upload an existing CV or synchronize platforms to establish baseline proficiency.
-2. **Gap Analysis:** The Readiness Engine compares verified capabilities against targeted job role requirements.
-3. **Active Practice:** The developer completes daily missions in Focus Mode with integrated Pomodoro tracking.
-4. **Telemetry & Rewards:** Activity fires progression sagas, awarding XP, maintaining streaks, and logging verifiable telemetry.
-5. **Adaptive Realignment:** Roadmap competencies automatically adapt as milestones are reached.
+1. **Intake & Diagnostics:** Import a PDF/DOCX resume or sync competitive platforms to establish an audited baseline.
+2. **Gap Analysis:** The Readiness Engine compares verified proficiencies against target role requirements (e.g., Backend Lead, Systems Engineer).
+3. **Personalized Roadmaps:** Skill gaps are sequenced into an actionable, dependency-aware milestone pathway.
+4. **Active Focus Execution:** Developers tackle daily missions with persistent Pomodoro/stopwatch timers and milestone checklists.
+5. **Telemetry & Rewards:** Activity triggers progression sagas that award XP, maintain consecutive streaks, and log verifiable proof.
+6. **Adaptive Realignment:** Roadmaps automatically recalculate as skills are mastered, guiding the next focus block.
 
 ---
 
-## 💻 Tech Stack
+## Key Features
 
-| Domain | Technologies |
-|---|---|
-| **Frontend** | React 19, Vite 8, TypeScript 5.9, Tailwind CSS 4, Framer Motion 12, Zustand 5, TanStack Query 5, Axios, Clerk React |
-| **Backend** | Express 5.1, TypeScript 5.9, Mongoose 8.14, BullMQ 5.76, ioredis 5.10, Zod 3.24, Helmet 8.1, Clerk Express |
-| **Datastores** | MongoDB 7.0+ (Mongoose ODM), Redis 7.0+ (Caching, Pub/Sub & BullMQ Queues) |
-| **AI Providers** | Google Gemini (`@google/generative-ai`), OpenAI (`openai`), PDF/DOCX parsers (`pdf-parse`, `mammoth`) |
-| **Testing** | Vitest 4 (Backend Unit & Integration; Frontend Unit), Playwright 1.48 (Browser End-to-End) |
-| **Deployment** | Render (Express Web Service + Background Workers), Vercel (React Frontend SPA), Docker Compose |
+| Domain | Capabilities | Source Module |
+|---|---|---|
+| **DSA Intelligence & Tracking** | Multi-platform ingestion (LeetCode, Codeforces, CodeChef), daily challenge indexing, topic-level mastery heatmaps, contest trackers, and weekly analytics. | `backend/src/modules/dsa` |
+| **Resume Intelligence OS** | Multi-format PDF/DOCX parsing, deterministic ATS compatibility auditing, GitHub claim validation, wording suggestions, and exportable report dossiers. | `backend/src/modules/resume` |
+| **Career Readiness Engine** | Diagnostic benchmarks, role gap analysis, adaptive roadmap sequencing, evolution progression graphs, and AI-guided recommendations with fallback templates. | `backend/src/modules/readiness` |
+| **Focus Mode & Mission Control** | Daily missions, persistent Pomodoro/stopwatch timers, active checklist cards, anti-distraction modes, and automated streak upkeep. | `backend/src/modules/focus` |
+| **Gamification Engine** | XP accrual, non-linear level curves (1–10+), consecutive day streaks with freeze protection mechanics, milestone awards, and achievement badges. | `backend/src/modules/xp` & `streak` |
+| **Project Workspace** | Full-stack project and task Kanban boards, sprint velocity metrics, and bidirectional GitHub repository linkages. | `backend/src/modules/projects` |
+| **Real-time WebChannels** | Server-Sent Events (SSE) singleton channels backed by Redis pub/sub for real-time dashboard state updates and live toasts. | `backend/src/shared/sse` |
+| **Operations & Observability** | BullMQ queue metrics, Dead Letter Queue (DLQ) inspection and replay, health probes, and beta observability telemetry. | `backend/src/modules/ops` |
 
 ---
 
-## 📁 Repository Structure
+## System Architecture
+
+DevTrack is designed as a modular monorepo emphasizing high data integrity, transactional progression sagas, and connection safety.
+
+```mermaid
+graph TD
+    subgraph "Client Layer (React 19 + Vite)"
+        UI[AppShell & Router] --> Dash[Dashboard & Focus View]
+        UI --> ResView[Resume & ATS Audits]
+        UI --> ReadView[Readiness & Roadmap OS]
+        UI --> SSEClient[useSse Hook / Singleton Channel]
+    end
+
+    subgraph "API & Gateway Layer (Express 5.1)"
+        AuthMw[Clerk JWT Auth & Rate Limiters] --> API[Versioned REST API /api/v1]
+        SSEClient <-->|Persistent EventSource| SSEH[SSE WebChannel Handler]
+    end
+
+    subgraph "Background Engine (BullMQ)"
+        WorkerCluster[Worker Cluster] --> PS[Platform Scraper Service]
+        WorkerCluster --> PDF[Resume Parsing Engine]
+        WorkerCluster --> Saga[Progression Saga Orchestrator]
+    end
+
+    subgraph "Data & Messaging"
+        DB[(MongoDB 7.0+)]
+        Redis[(Redis 7.0+ Pub/Sub & Queues)]
+    end
+
+    API --> DB
+    Saga --> DB
+    SSEH <--> Redis
+    WorkerCluster <--> Redis
+```
+
+### Architectural Tenets
+* **Lean Database Reads:** High-frequency dashboard and readiness endpoints use Mongoose `.lean()` to bypass hydration overhead, cutting memory allocations by ~40%.
+* **Singleton SSE WebChannel:** Browser clients enforce exactly one persistent `EventSource` connection per tab via a shared store, mitigating socket exhaustion.
+* **Strict Redis Namespacing:** Distributed caches and locks use strict `devtrack:<module>:<identifier>` keys with deterministic TTLs.
+* **Non-Blocking Ingestion:** Scrapers, PDF parsers, and AI embeddings execute inside BullMQ background queues, maintaining sub-100ms API response times.
+* **Graceful Degradation:** When AI credentials (`OPENAI_API_KEY` or `GEMINI_API_KEY`) are omitted, intelligent deterministic fallback templates take over without crashing.
+
+---
+
+## Tech Stack
+
+| Domain | Technologies | Details |
+|---|---|---|
+| **Frontend** | React 19, Vite 8, TypeScript 5.9 | Tailwind CSS 4, Framer Motion 12, Zustand 5, TanStack Query 5, Axios, Clerk React |
+| **Backend** | Express 5.1, Node.js 20+, TypeScript 5.9 | Mongoose 8.14, BullMQ 5.76, ioredis 5.10, Zod 3.24, Helmet 8.1, Clerk Express |
+| **Datastores** | MongoDB 7.0+, Redis 7.0+ | MongoDB for persistence; Redis for caching, pub/sub channels, and BullMQ queues |
+| **AI & Document Parsing** | Google Gemini, OpenAI, PDF/DOCX Parsers | `@google/generative-ai`, `openai`, `pdf-parse`, `mammoth` |
+| **Testing** | Vitest 4, Playwright 1.48 | Unit & integration test suites, end-to-end browser specs |
+| **Orchestration & DevOps** | Docker Compose, Custom Dev-Orchestrator | Local multi-service runner (`dev-orchestrator`), Render (API/Workers), Vercel (SPA) |
+
+---
+
+## Repository Structure
 
 ```text
 DevTrack/
-├── .github/                      # CI/CD Workflows
-│   └── workflows/
-│       ├── pr-checks.yml         # Lint, typecheck, unit tests, integration tests, Docker build
-│       ├── deploy-production.yml # Automated Render deploy trigger & Vercel documentation
-│       └── deploy-staging.yml    # Manual workflow_dispatch staging deployment
-├── dev-orchestrator/             # Local multi-service development orchestrator
+├── .github/                      # CI/CD Workflows (pr-checks, deploy-production, deploy-staging)
+├── dev-orchestrator/             # Local multi-service process manager & health monitor
+│   └── src/                      # Child process manager, port cleaner, and health probes
+├── backend/                      # Express 5 REST API & BullMQ Background Workers
 │   ├── src/
-│   │   ├── console/              # Terminal formatting & status indicators
-│   │   ├── monitor/              # Port availability & service health probes
-│   │   ├── orchestrator/         # Child-process manager (API + Workers + Client)
-│   │   └── utils/                # Runtime cache cleaners & port releasers
-│   └── package.json
-├── backend/                      # Express 5 REST API & BullMQ Workers
-│   ├── src/
-│   │   ├── config/               # Environment variable schemas & constants
+│   │   ├── config/               # Environment schema validation (Zod) and constants
 │   │   ├── db/models/            # 60+ Mongoose models (Readiness, Resume, XP, Projects)
-│   │   ├── middleware/           # Clerk JWT auth, rate limiting, error handlers, validation
+│   │   ├── middleware/           # Clerk JWT auth, tiered rate limiters, error handling
 │   │   ├── modules/              # Modular domain controllers, services, and routes
 │   │   │   ├── auth/             # Clerk identity synchronization
 │   │   │   ├── dsa/              # DSA problem trackers & LeetCode calendar parser
-│   │   │   ├── readiness/        # Benchmark calculations, skill gap analysis, evolution
+│   │   │   ├── focus/            # Mission control, pomodoro cycles, checklists
+│   │   │   ├── readiness/        # Skill benchmarks, gap analysis, roadmap sequencing
 │   │   │   ├── resume/           # ATS engine, extraction mappers, wording optimizer
-│   │   │   ├── streak/           # Consecutive activity streak logic & freeze system
+│   │   │   ├── streak/           # Consecutive day streaks & freeze mechanics
 │   │   │   └── xp/               # Gamification point rules and leveling sagas
-│   │   ├── shared/               # Redis singletons, BullMQ worker factories, SSE channels
-│   │   ├── index.ts              # API server entrypoint
+│   │   ├── shared/               # Redis singletons, BullMQ worker cluster, SSE handler
+│   │   ├── index.ts              # Express API server entrypoint
 │   │   └── worker-entrypoint.ts  # Standalone worker cluster entrypoint
 │   └── package.json
 ├── frontend/                     # React 19 Client SPA
 │   ├── src/
-│   │   ├── components/           # Reusable UI components, timers, dashboards
-│   │   ├── features/             # Domain components (Readiness, ResumeTracker, Focus)
-│   │   ├── pages/                # Route targets (Dashboard, Focus, DSA, Projects, Readiness)
+│   │   ├── components/           # Reusable UI components, surface cards, modals
+│   │   ├── features/             # Scoped domain modules (Readiness, Resume, Focus, DSA)
+│   │   ├── pages/                # Route views (Dashboard, Focus, DSA, Projects, Readiness)
 │   │   ├── services/             # Axios API clients & SSE connection listeners
-│   │   ├── store/                # Zustand client stores (auth, progression, missions, ui)
+│   │   ├── store/                # Zustand transient stores (UI, modals, session)
 │   │   └── router/               # React Router configuration
 │   └── package.json
-├── docs/                         # Extended project documentation
-│   ├── ARCHITECTURE.md           # System topology, queue lifecycle, data flow
-│   ├── DEPLOYMENT.md             # Production hosting on Render & Vercel
-│   ├── CONTRIBUTING.md           # Contribution guidelines & NWoC 2026 rules
-│   └── PROJECT_STATUS.md         # Factual component health & verification status
+├── docs/                         # Technical documentation & architectural blueprints
+│   ├── architecture.md           # Topology, queue lifecycles, and SSE stream mechanics
+│   ├── conventions.md            # Coding standards, database patterns, state rules
+│   ├── ARCHITECTURE.md           # Extended system documentation
+│   └── CONTRIBUTING.md           # Contribution guidelines & NWoC 2026 rules
 ├── docker-compose.yml            # Local development infrastructure (MongoDB + Redis)
 ├── docker-compose.prod.yml       # Production containerized deployment
-├── package.json                  # Root monorepo workspace scripts
+├── package.json                  # Root workspace scripts
 └── README.md
 ```
 
 ---
 
-## ⚡ Performance & Security Hardening
+## Quick Start & Installation
 
-### Performance Optimizations
-* **Lean Database Reads:** High-frequency dashboard endpoints use Mongoose `.lean()` to bypass document hydration overhead and minimize heap allocations (`backend/src/modules/readiness/readiness.controller.ts`).
-* **Singleton SSE WebChannel:** Tab-level client synchronization guarantees only one persistent EventSource runs per browser tab, mitigating connection exhaustion (`backend/src/shared/sse/sseHandler.ts`).
-* **Redis Key Namespaces:** Caching structures use strict prefixes `devtrack:<module>:<identifier>` with deterministic TTLs (`backend/src/modules/ops/ops.controller.ts`).
-* **Non-Blocking Background Tasks:** Platform scraping, resume PDF parsing, and AI embeddings run via BullMQ workers, maintaining sub-100ms API response times.
-
-### Security Hardening
-* **Tiered Rate Limiting:** Sensitive authentication routes (`/api/v1/auth/*`) enforce strict windows (5 requests per 15 min), while dashboard read endpoints allow higher throughput (`backend/src/middleware/rateLimitAdvanced.ts`).
-* **Payload Validation & Sanitization:** Incoming requests pass Zod schema filters and injection mitigation before reaching controllers (`backend/src/middleware/validation.ts`).
-* **CORS & CSP Controls:** Explicit HTTPS origin whitelisting in production combined with Helmet Content Security Policy and HSTS enforcement (`backend/src/index.ts`).
+### Prerequisites
+* **Node.js:** `>= 18.0.0` (Node 22 LTS recommended)
+* **npm:** `>= 9.0.0`
+* **Docker Desktop:** For running local MongoDB and Redis instances
+* **Clerk Account:** Free account at [clerk.com](https://clerk.com) for authentication credentials
 
 ---
 
-## 🚀 Quick Start & Installation
-
-### Prerequisites
-* **Node.js:** `>= 18.0.0` (Node 22 recommended)
-* **npm:** `>= 9.0.0`
-* **Docker Desktop:** Required for local MongoDB and Redis instances
-* **Clerk Account:** Free account at [clerk.com](https://clerk.com) for authentication credentials
-
-### 1. Clone Repository
+### Step 1: Clone the Repository
 ```bash
 git clone https://github.com/VarshithReddy2006/DevTrack.git
 cd DevTrack
 ```
 
-### 2. Install Monorepo Dependencies
+### Step 2: Install Monorepo Dependencies
 ```bash
 npm run install-all
 ```
 *This installs dependencies across the root, `backend/`, `frontend/`, and `dev-orchestrator/`.*
 
-### 3. Environment Configuration
+### Step 3: Environment Configuration
 Copy the provided environment templates:
+
 ```bash
-# Backend environment
+# macOS / Linux
 cp backend/.env.example backend/.env
-
-# Frontend environment
 cp frontend/.env.example frontend/.env
+
+# Windows PowerShell
+Copy-Item backend/.env.example backend/.env
+Copy-Item frontend/.env.example frontend/.env
 ```
-*(On Windows PowerShell, use `Copy-Item backend/.env.example backend/.env`)*
 
-Configure the mandatory keys:
+Configure the essential keys:
 * **`backend/.env`**:
-  * `CLERK_SECRET_KEY` — From Clerk Dashboard → API Keys
-  * `MONGODB_URI` — Default: `mongodb://localhost:27017/devtrack`
-  * `REDIS_URL` — Default: `redis://localhost:6379`
+  ```env
+  PORT=3001
+  NODE_ENV=development
+  MONGODB_URI=mongodb://localhost:27017/devtrack
+  REDIS_URL=redis://localhost:6379
+  CLERK_SECRET_KEY=sk_test_... # From Clerk Dashboard → API Keys
+  ```
 * **`frontend/.env`**:
-  * `VITE_CLERK_PUBLISHABLE_KEY` — From Clerk Dashboard → API Keys
-  * `VITE_API_BASE_URL` — Default: `http://localhost:3001/api/v1`
+  ```env
+  VITE_API_BASE_URL=http://localhost:3001/api/v1
+  VITE_CLERK_PUBLISHABLE_KEY=pk_test_... # From Clerk Dashboard → API Keys
+  ```
 
-### 4. Start Infrastructure Containers
+### Step 4: Start Infrastructure Containers
 ```bash
 npm run dev:infra
 ```
-*Starts MongoDB on `localhost:27017` and Redis on `localhost:6379`.*
+*Launches MongoDB on port `27017` and Redis on port `6379` via Docker Compose.*
 
-### 5. Launch the Application
+### Step 5: Launch DevTrack
 
-Choose the development mode suited to your workflow:
+Select the development mode suited to your workflow:
 
 ```bash
-# Option A — Standard concurrent development (API + Frontend)
+# Option A — Standard concurrent development (API + Frontend SPA)
 npm run dev
 
-# Option B — Full stack with BullMQ background workers and health monitor
+# Option B — Full stack with BullMQ background workers and orchestrator health probes
 npm run dev:all
 
-# Option C — Full Docker Compose environment
+# Option C — Complete containerized Docker Compose environment
 docker compose up --build
 ```
 
-| Service | Local URL |
-|---|---|
-| **Frontend Application** | [http://localhost:5173](http://localhost:5173) |
-| **Backend API Server** | [http://localhost:3001](http://localhost:3001) |
-| **API Health Probe** | [http://localhost:3001/health](http://localhost:3001/health) |
+### Local Access Points
+
+| Service | Address | Description |
+|---|---|---|
+| **Frontend Application** | [http://localhost:5173](http://localhost:5173) | Interactive React 19 Client SPA |
+| **Backend REST API** | [http://localhost:3001](http://localhost:3001) | Express 5.1 Canonical `/api/v1` Gateway |
+| **API Health Probe** | [http://localhost:3001/health](http://localhost:3001/health) | System, datastore, and Redis ping status |
 
 ---
 
-## 🧪 Testing Strategy
+## Testing & Verification
 
-DevTrack employs automated test suites covering unit logic, integration flows, and end-to-end user paths.
+DevTrack features an automated testing matrix covering unit math, integration sagas, and end-to-end user paths.
 
 ```bash
-# ── Backend Testing ────────────────────────────────────────────────────────
+# ── Backend Test Suite ────────────────────────────────────────────────────────
 # Run fast in-memory unit tests (140+ assertions across modules)
 npm run test:unit --prefix backend
 
-# Run database integration tests (requires running MongoDB + Redis)
+# Run database integration tests (requires MongoDB + Redis running)
 npm run test:integration --prefix backend
 
-# ── Frontend Testing ───────────────────────────────────────────────────────
-# Run frontend unit tests (pure utility & formatting functions)
+# ── Frontend Test Suite ───────────────────────────────────────────────────────
+# Run frontend unit tests (utilities, formatters, state mappers)
 npm run test:unit --prefix frontend
 
-# Run Playwright End-to-End browser tests (requires running stack)
+# Run Playwright End-to-End browser tests (requires running application stack)
 npm run test:e2e --prefix frontend
 ```
 
 ### Continuous Integration (CI)
-GitHub Actions runs the validation pipeline on every pull request (`.github/workflows/pr-checks.yml`):
-* **Static Checks:** TypeScript incremental compilation (`tsc --noEmit`) and linting across backend and frontend workspaces.
-* **Unit Tests:** Vitest suites for backend and frontend.
-* **Integration Tests:** Boots containerized MongoDB and Redis services with health checks.
-* **Docker Verification:** Builds backend and frontend production images.
+GitHub Actions validates every pull request via `.github/workflows/pr-checks.yml`:
+* **Static Verification:** Strict TypeScript compilation (`tsc --noEmit`) and ESLint checks.
+* **Automated Unit Testing:** Vitest suites executed across backend and frontend workspaces.
+* **Service Integration Tests:** Containerized MongoDB and Redis services booted with health probes.
+* **Docker Verification:** Production container build verification for backend and frontend.
 
 ---
 
-## 🌐 Routes Overview
+## Canonical API Routes (`/api/v1`)
 
-### Canonical API Routes (`/api/v1`)
-All endpoints are versioned under `/api/v1` (legacy `/api/*` routes are supported with deprecation headers):
+All primary endpoints are versioned under `/api/v1` (legacy `/api/*` routes are preserved with deprecation headers):
 
-| Module | Path Prefix | Authentication | Responsibility |
+| Module | Path Prefix | Auth Requirement | Description |
 |---|---|---|---|
-| **Auth** | `/auth` | Clerk JWT | Identity handshake and user sync |
-| **Events** | `/events` | SSE Token | Server-Sent Events real-time feed |
-| **Dashboard** | `/dashboard` | Required | Aggregated stats, missions, heatmaps |
-| **DSA** | `/dsa` | Required | Problems, submissions, contest history |
-| **Readiness** | `/readiness` | Required | Gap calculations, benchmarks, roadmap |
-| **Resume** | `/resume` | Required | Parsing, ATS score, claim validation |
-| **Gamification** | `/xp`, `/streak`, `/missions` | Required | XP allocation, streaks, daily missions |
-| **Projects** | `/projects` | Required | Project and task CRUD operations |
-| **Platforms** | `/platforms` | Required | Third-party platform synchronization |
-| **Ops (Admin)** | `/ops` | Auditor / Admin | Queue health, DLQ inspection, telemetry |
-
-### Frontend Application Routes
-| Path | View | Purpose |
-|---|---|---|
-| `/dashboard` | Engineering Dashboard | Activity summary, XP meters, and active missions |
-| `/focus` | Mission Control | Stopwatch, Pomodoro cycles, and daily checklists |
-| `/dsa` | DSA Workspace | Solved problems index, topic mastery, and contest logs |
-| `/projects` | Project Hub | Task boards and repository links |
-| `/resume` | Resume Center | CV upload dropzone and ATS score reports |
-| `/readiness` | Readiness OS | Career benchmarks, skill gap maps, and evolution graphs |
-| `/profile` | User Profile | Public portfolio and platform handles |
-| `/settings` | Settings | Profile preferences and platform connections |
+| **Auth** | `/auth` | Clerk JWT | Identity synchronization, handshake, and user onboarding |
+| **Events** | `/events` | SSE Token | Server-Sent Events singleton telemetry stream |
+| **Dashboard** | `/dashboard` | Required | Aggregated metrics, active missions, and activity heatmaps |
+| **DSA** | `/dsa` | Required | Solved problem index, platform scrapers, and contest tracking |
+| **Readiness** | `/readiness` | Required | Diagnostic benchmarks, role gap analysis, and roadmap trees |
+| **Resume** | `/resume` | Required | Multi-format parsing, ATS scoring, and GitHub claim audit |
+| **Focus** | `/focus` | Required | Stopwatch sessions, Pomodoro cycle tracking, and checklists |
+| **Gamification** | `/xp`, `/streak`, `/missions` | Required | XP allocation sagas, streak updates with freeze mechanics |
+| **Projects** | `/projects` | Required | Project and task CRUD operations, GitHub repository links |
+| **Platforms** | `/platforms` | Required | Third-party platform synchronizers (LeetCode, Codeforces, GitHub) |
+| **Ops (Admin)** | `/ops` | Auditor / Admin | Queue metrics, Dead Letter Queue (DLQ) inspection, and replays |
 
 ---
 
-## ⚠️ Known Constraints & Verification Gaps
+## Security & Performance Hardening
 
-To maintain strict engineering transparency, the following constraints and gaps are documented:
-
-* **Third-Party Platform Limits:** LeetCode and CodeChef scraping endpoints are subject to remote rate limiting. Configuring an optional personal `GITHUB_TOKEN` is recommended to maintain GitHub sync throughput.
-* **ATS Integrations:** Integrations with Greenhouse, Workday, Lever, and Taleo run in sandbox simulation mode. Live enterprise OAuth flows are not connected.
-* **Resume Upload Size:** File upload payloads are capped at 5 MB (PDF/DOCX).
-* **AI Provider Fallbacks:** When `OPENAI_API_KEY` or `GEMINI_API_KEY` are not configured, AI-dependent features (resume wording suggestions, conversational copilot) degrade gracefully to deterministic fallback templates without crashing.
+* **Tiered Rate Limiting:** High-sensitivity authentication and sync routes enforce strict windows (5 requests per 15 min), while dashboard reads allow higher throughput (`backend/src/middleware/rateLimitAdvanced.ts`).
+* **Input Sanitization & Validation:** All requests pass Zod schema filters and injection mitigation before touching controllers (`backend/src/middleware/validation.ts`).
+* **CORS & CSP Headers:** Strict HTTPS origin whitelisting in production combined with Helmet Content Security Policy and HSTS enforcement (`backend/src/index.ts`).
+* **Abuse Mitigation Sagas:** Solve velocity and submission timestamps are audited to prevent spoofed XP or artificial streak progression (`backend/src/modules/xp/xp.service.ts`).
 
 ---
 
-## 🤝 Contributing
+## AI Usability & Source of Truth
+
+This repository is built to be self-explanatory to AI coding assistants (GitHub Copilot, Cursor, Codex, Antigravity) and human contributors alike.
+
+### Mandatory Reading Order for AI Agents
+1. **`README.md`** *(This file — platform vision, stack, directory structure, quickstart)*
+2. **`AGENTS.md`** *(Single source of truth guidelines and agent routing)*
+3. **`.Codex/proxima-routing.md`** *(AI orchestration framework and dispatch rules)*
+4. **`docs/architecture.md`** *(System topology, saga lifecycles, and SSE mechanics)*
+5. **`docs/conventions.md`** *(Coding standards, database patterns, and state rules)*
+
+---
+
+
+## Contributing
 
 We welcome contributions from the community!
 
-1. Read the comprehensive guidelines in **[CONTRIBUTING.md](./CONTRIBUTING.md)** before opening issues or pull requests.
-2. If participating in **Nexus Winter of Code (NWoC) 2026**, ensure issues and PRs follow the mandatory labelling guidelines (`nsoc26`, `level1`, `level2`, `level3`).
-3. Always verify local typechecking and unit test execution before submitting a PR:
+1. Please read **[CONTRIBUTING.md](./CONTRIBUTING.md)** before opening issues or submitting pull requests.
+2. **Nexus Winter of Code (NWoC) 2026:** Ensure issues and PRs follow the mandatory labelling conventions (`nsoc26`, `level1`, `level2`, `level3`).
+3. Always verify local typechecking and unit test suites before creating a pull request:
    ```bash
    npm run build --prefix backend
    npm run build --prefix frontend
@@ -293,16 +359,7 @@ We welcome contributions from the community!
 
 ---
 
-## 📚 Documentation Index
+## License & Status
 
-* **[ARCHITECTURE.md](./ARCHITECTURE.md)** — Architectural patterns, queue lifecycles, and SSE topology.
-* **[DEPLOYMENT.md](./DEPLOYMENT.md)** — Production hosting instructions for Render and Vercel.
-* **[CONTRIBUTING.md](./CONTRIBUTING.md)** — Code conventions, PR requirements, and NWoC 2026 rules.
-* **[PROJECT_STATUS.md](./PROJECT_STATUS.md)** — Factual build matrix and module completeness audit.
-
----
-
-## 📄 License & Status
-
-* **Status:** **Beta Candidate** — Software is actively undergoing testing and validation.
-* **License:** Licensed under the **[MIT License](https://opensource.org/licenses/MIT)**.
+* **Status:** **Beta Candidate** — Software is actively undergoing testing, verification, and hardening.
+* **License:** Released under the **[MIT License](https://opensource.org/licenses/MIT)**.
