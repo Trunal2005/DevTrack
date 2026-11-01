@@ -11,6 +11,8 @@ const profileUpdateSchema = z.object({
   bio: z.string().max(500).optional(),
   timezone: z.string().optional(),
   roleTitle: z.string().max(100).nullable().optional(),
+  location: z.string().trim().max(100).nullable().optional(),
+  techStack: z.array(z.string().trim().min(1)).optional(),
   targetRole: z.string().max(100).nullable().optional(),
   targetCompanies: z.array(z.string()).optional(),
   socialLinks: z.object({

@@ -7,10 +7,15 @@ import type { Types } from 'mongoose';
 
 export const EVIDENCE_GRAPH_QUEUE = 'evidence-graph';
 
+let evidenceGraphWorker: Worker | undefined;
+let embeddingWorker: Worker | undefined;
+let githubAnalysisWorker: Worker | undefined;
+
 export function startEvidenceGraphWorker(): void {
+  if (evidenceGraphWorker) return;
   const engine = new EvidenceGraphEngine();
 
-  new Worker(
+  evidenceGraphWorker = new Worker(
     EVIDENCE_GRAPH_QUEUE,
     async (job: Job) => {
       logger.info(`[EvidenceGraphWorker] Processing job ${job.id}`);
@@ -23,7 +28,8 @@ export function startEvidenceGraphWorker(): void {
 // src/modules/resume-intelligence/workers/embedding-generation.worker.ts
 export const EMBEDDING_GENERATION_QUEUE = 'embedding-generation';
 export function startEmbeddingWorker(): void {
-  new Worker(
+  if (embeddingWorker) return;
+  embeddingWorker = new Worker(
     EMBEDDING_GENERATION_QUEUE,
     async (job: Job) => {
       logger.info(`[EmbeddingWorker] Generating embeddings for ${job.id}`);
@@ -36,8 +42,9 @@ export function startEmbeddingWorker(): void {
 import { RepositoryIntelligenceEngine } from '../github/RepositoryIntelligenceEngine.js';
 export const GITHUB_ANALYSIS_QUEUE = 'github-analysis';
 export function startGithubAnalysisWorker(): void {
+  if (githubAnalysisWorker) return;
   const engine = new RepositoryIntelligenceEngine();
-  new Worker(
+  githubAnalysisWorker = new Worker(
     GITHUB_ANALYSIS_QUEUE,
     async (job: Job) => {
       logger.info(`[GithubAnalysisWorker] Analyzing repo ${job.data.repoUrl}`);
@@ -45,4 +52,19 @@ export function startGithubAnalysisWorker(): void {
     },
     { connection: getRedisConnection() }
   );
+}
+
+export async function stopEvidenceGraphWorker(): Promise<void> {
+  await evidenceGraphWorker?.close();
+  evidenceGraphWorker = undefined;
+}
+
+export async function stopEmbeddingWorker(): Promise<void> {
+  await embeddingWorker?.close();
+  embeddingWorker = undefined;
+}
+
+export async function stopGithubAnalysisWorker(): Promise<void> {
+  await githubAnalysisWorker?.close();
+  githubAnalysisWorker = undefined;
 }

@@ -7,6 +7,7 @@
 
 import axiosClient from '../utils/axiosClient';
 import type { AxiosResponse } from 'axios';
+import type { ApiProfileUpdatePayload } from '../types/api.types';
 
 const PROFILE_BASE = '/profile';
 
@@ -39,7 +40,7 @@ export async function getProfile(): Promise<AxiosResponse> {
  * Update user profile data.
  * PATCH /profile
  */
-export async function updateProfile(payload: Record<string, unknown>): Promise<AxiosResponse> {
+export async function updateProfile(payload: ApiProfileUpdatePayload): Promise<AxiosResponse> {
   return axiosClient.patch(PROFILE_BASE, payload);
 }
 

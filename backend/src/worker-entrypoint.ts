@@ -1,156 +1,74 @@
-// src/worker-entrypoint.ts — Standalone worker process entrypoint
-// Runs BullMQ workers WITHOUT the Express HTTP server.
-// In production: API container runs index.ts, worker containers run this file.
-// This isolates the blast radius — a worker crash can't take down the API.
+// Standalone workers: reject invalid selectors before importing service modules.
+import { createWorkerRuntime } from './workers/worker-runtime.js';
 
-import { connectDatabase, disconnectDatabase } from './db/index.js';
-import { logger } from './shared/logger.js';
-import { validateStartup } from './shared/startup-validation.js';
-import { startPlatformSyncWorker, stopPlatformSyncWorker } from './shared/jobs/platformSyncWorker.js';
-import { startMaintenanceWorker, stopMaintenanceWorker, scheduleMaintenanceTasks } from './shared/jobs/maintenanceWorker.js';
+let disconnectDatabase: (() => Promise<void>) | undefined;
+let disconnectRedis: (() => Promise<void>) | undefined;
+let stopHealthMonitor: (() => void) | undefined;
+let runtime: ReturnType<typeof createWorkerRuntime> | undefined;
+let shutdownPromise: Promise<void> | undefined;
+let exitCode = 0;
+// Bootstrap errors must remain readable even when environment validation cannot load the logger.
+let log: Pick<typeof import('./shared/logger.js')['logger'], 'info' | 'error'> = console;
 
-import { startResumeGenerationWorker, stopResumeGenerationWorker } from './modules/resume/workers/resume-generation.worker.js';
-import { startATSAnalysisWorker, stopATSAnalysisWorker } from './modules/resume/workers/ats-analysis.worker.js';
-import { startResumeExportWorker, stopResumeExportWorker } from './modules/resume/workers/resume-export.worker.js';
-import { startCredibilityWorker, stopCredibilityWorker } from './modules/resume/workers/credibility-recalculation.worker.js';
-import { startVariantGenerationWorker, stopVariantGenerationWorker } from './modules/resume/workers/variant-generation.worker.js';
-import { startEvidenceGraphWorker, startEmbeddingWorker, startGithubAnalysisWorker } from './modules/resume/workers/phase4-workers.js';
-import { startDatasetIngestionWorker, stopDatasetIngestionWorker } from './workers/worker-dataset-ingestion.js';
-import { startResumeUploadWorker, stopResumeUploadWorker } from './workers/worker-resume-upload.js';
+function shutdown(signal: string, code = 0): Promise<void> {
+  exitCode = Math.max(exitCode, code);
+  shutdownPromise ??= (async () => {
+    log.info(`[worker-entrypoint] ${signal}; draining workers`, { event: 'worker_process_shutdown', signal });
+    try { await runtime?.stop(); } catch (error) {
+      log.error('[worker-entrypoint] Cleanup failed', error);
+      exitCode = 1;
+    }
+    process.exit(exitCode);
+  })();
+  return shutdownPromise;
+}
 
-const WORKER_TYPE = process.env.WORKER_TYPE || 'all';
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('unhandledRejection', (error) => {
+  log.error('[worker-entrypoint] Unhandled rejection', error);
+  void shutdown('unhandledRejection', 1);
+});
+process.on('uncaughtException', (error) => {
+  log.error('[worker-entrypoint] Uncaught exception', error);
+  void shutdown('uncaughtException', 1);
+});
 
 async function main(): Promise<void> {
-  logger.info('[worker-entrypoint] Starting worker process', {
-    event: 'worker_process_starting',
-    workerType: WORKER_TYPE,
-    pid: process.pid,
+  runtime = createWorkerRuntime(process.argv[2] ?? (process.env.WORKER_TYPE || 'all'), {
+    validate: async () => {
+      const redis = await import('./shared/redis/index.js');
+      disconnectRedis = redis.disconnectRedis;
+      log = (await import('./shared/logger.js')).logger;
+      log.info('[worker-entrypoint] Starting worker process', {
+        event: 'worker_process_starting', workerType: runtime!.type, pid: process.pid,
+      });
+      const { validateStartup } = await import('./shared/startup-validation.js');
+      await validateStartup();
+    },
+    connect: async () => {
+      const database = await import('./db/index.js');
+      disconnectDatabase = database.disconnectDatabase;
+      await database.connectDatabase();
+      const { WorkerHealthMonitor } = await import('./workers/WorkerHealthMonitor.js');
+      const monitor = new WorkerHealthMonitor(runtime!.type);
+      stopHealthMonitor = () => monitor.stop();
+      monitor.start();
+    },
+    disconnect: async () => {
+      try { stopHealthMonitor?.(); } finally {
+        try { await disconnectDatabase?.(); } finally { await disconnectRedis?.(); }
+      }
+    },
   });
-
-  // Run startup validation checks
-  await validateStartup();
-
-  // Connect to MongoDB (workers need it for sync results and XP writes)
-  await connectDatabase();
-
-  // Start only the requested worker type
-  switch (WORKER_TYPE) {
-    case 'sync':
-      startPlatformSyncWorker();
-      logger.info('[worker-entrypoint] Platform sync worker started');
-      break;
-
-    case 'xp': {
-      const { startXpWorker } = await import('./shared/jobs/xpWorker.js');
-      startXpWorker();
-      logger.info('[worker-entrypoint] XP processing worker started');
-      break;
-    }
-
-    case 'maintenance':
-      startMaintenanceWorker();
-      await scheduleMaintenanceTasks();
-      logger.info('[worker-entrypoint] Maintenance worker started');
-      break;
-
-    case 'all':
-    default:
-      startPlatformSyncWorker();
-      startMaintenanceWorker();
-      await scheduleMaintenanceTasks();
-      
-      // Start resume intelligence workers
-      startResumeGenerationWorker();
-      startATSAnalysisWorker();
-      startResumeExportWorker();
-      startCredibilityWorker();
-      startVariantGenerationWorker();
-      
-      // Start Phase 4 intelligence workers
-      startEvidenceGraphWorker();
-      startEmbeddingWorker();
-      startGithubAnalysisWorker();
-      
-      // Start Dataset Operationalization workers
-      startDatasetIngestionWorker();
-      
-      // Start consolidator resume upload orchestrator worker
-      startResumeUploadWorker();
-      
-      try {
-        const { startProfileRebuildWorker } = await import('./shared/jobs/profileRebuildWorker.js');
-        startProfileRebuildWorker();
-      } catch (e) {
-        logger.warn('[worker-entrypoint] profileRebuildWorker module not available', { error: String(e) });
-      }
-
-      try {
-        const { startXpWorker } = await import('./shared/jobs/xpWorker.js');
-        startXpWorker();
-      } catch {
-        logger.warn('[worker-entrypoint] XP worker module not available');
-      }
-      logger.info('[worker-entrypoint] All workers started');
-      break;
-  }
-
-  logger.info('[worker-entrypoint] Worker process ready', {
-    event: 'worker_process_ready',
-    workerType: WORKER_TYPE,
-    pid: process.pid,
+  await runtime.start();
+  if (!shutdownPromise) log.info('[worker-entrypoint] Worker process ready', {
+    event: 'worker_process_ready', workerType: runtime.type, pid: process.pid,
   });
 }
 
-// ─── Graceful shutdown ─────────────────────────────────────────────────
-
-async function shutdown(signal: string): Promise<void> {
-  logger.info(`[worker-entrypoint] Received ${signal}, shutting down gracefully`, {
-    event: 'worker_process_shutdown',
-    signal,
-  });
-
-  try {
-    await stopPlatformSyncWorker();
-    await stopMaintenanceWorker();
-    
-    // Stop resume intelligence workers
-    await stopResumeGenerationWorker();
-    await stopATSAnalysisWorker();
-    await stopResumeExportWorker();
-    await stopCredibilityWorker();
-    await stopVariantGenerationWorker();
-    
-    await stopDatasetIngestionWorker();
-    await stopResumeUploadWorker();
-    
-    try {
-      const { stopProfileRebuildWorker } = await import('./shared/jobs/profileRebuildWorker.js');
-      await stopProfileRebuildWorker();
-    } catch {
-      // Module may not be available — already logged at startup
-    }
-
-    await disconnectDatabase();
-  } catch (err) {
-    logger.error('[worker-entrypoint] Error during shutdown', err);
-  }
-
-  process.exit(0);
-}
-
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-
-process.on('unhandledRejection', (reason) => {
-  logger.error('[worker-entrypoint] Unhandled rejection', reason);
-});
-
-process.on('uncaughtException', (err) => {
-  logger.error('[worker-entrypoint] Uncaught exception — exiting', err);
-  process.exit(1);
-});
-
-main().catch((err) => {
-  logger.error('[worker-entrypoint] Fatal startup error', err);
-  process.exit(1);
+void main().catch(async (error) => {
+  if (shutdownPromise) return;
+  log.error('[worker-entrypoint] Fatal startup error', error);
+  await shutdown('startup failure', 1);
 });

@@ -60,6 +60,11 @@ claude/
 
 # Local scripts (dev helpers)
 scripts/
+!/scripts/
+/scripts/*
+!/scripts/OwnedRuntime.ps1
+!/scripts/OwnedRuntime.test.ps1
+!/scripts/README.md
 
 # Temporary files
 *.tmp

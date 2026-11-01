@@ -4,6 +4,7 @@ import { Schema, model, type Document } from 'mongoose';
 export interface IUserProfile extends Document {
   userId: Schema.Types.ObjectId;
   roleTitle: string | null;
+  location: string | null;
   targetRole: string | null;
   targetCompanies: string[];
   techStack: string[];
@@ -31,6 +32,12 @@ const userProfileSchema = new Schema<IUserProfile>(
     roleTitle: {
       type: String,
       default: null,
+    },
+    location: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 100,
     },
     targetRole: {
       type: String,

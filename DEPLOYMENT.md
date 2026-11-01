@@ -46,9 +46,21 @@ Separate the HTTP server from background workers so each scales independently.
 | API | `node dist/index.js` | `ENABLE_WORKERS=false` |
 | Sync worker | `node dist/worker-entrypoint.js` | `WORKER_TYPE=sync` |
 | XP worker | `node dist/worker-entrypoint.js` | `WORKER_TYPE=xp` |
-| Orchestration worker | `node dist/worker-entrypoint.js` | `WORKER_TYPE=orch` |
-| Maintenance worker | `node dist/worker-entrypoint.js` | `WORKER_TYPE=maint` |
+| Maintenance worker | `node dist/worker-entrypoint.js` | `WORKER_TYPE=maintenance` |
 | Resume intelligence | `node dist/worker-entrypoint.js` | `WORKER_TYPE=resume-intelligence` |
+| Dataset ingestion | `node dist/worker-entrypoint.js` | `WORKER_TYPE=dataset` |
+
+Supported selectors are `sync`, `xp`, `maintenance`, `resume-intelligence`,
+`dataset` and `all`. An unset or empty selector defaults to `all`, preserving the
+local development fallback; typos fail before service imports/connections.
+Use explicit roles in production.
+`all` starts the union once and is intended for local development. There is no
+separate orchestration-compensation consumer; `orch` and `orchestration` are
+unsupported. The resume role runs the existing resume consumers and profile rebuild.
+The dataset role runs dataset ingestion independently. Backend `npm run worker:*`
+commands use the same dispatcher; their positional role overrides `WORKER_TYPE`.
+On SIGINT/SIGTERM, registered workers drain before MongoDB/shared Redis disconnect.
+Startup failures clean up already registered workers and exit nonzero.
 
 Use `docker-compose.prod.yml` for a local production simulation:
 
@@ -128,7 +140,7 @@ Services: `mongo` (7), `redis` (7-alpine), `backend`, `frontend` (Nginx).
 `docker-compose.prod.yml` defines:
 
 - `api` - Express only, `ENABLE_WORKERS=false`
-- `worker-sync` (2 replicas), `worker-xp`, `worker-orch`, `worker-maint`
+- `worker-sync` (2 replicas), `worker-xp`, `worker-resume`, `worker-dataset`, `worker-maint`
 - `mongo`, `redis` with health checks
 
 Requires `.env.production` at the repo root.
@@ -185,8 +197,9 @@ Create one Render service per worker type:
 |---------------|---------------|---------------|
 | `devtrack-sync` | `sync` | `node dist/worker-entrypoint.js` |
 | `devtrack-xp` | `xp` | `node dist/worker-entrypoint.js` |
-| `devtrack-orch` | `orch` | `node dist/worker-entrypoint.js` |
-| `devtrack-maint` | `maint` | `node dist/worker-entrypoint.js` |
+| `devtrack-resume` | `resume-intelligence` | `node dist/worker-entrypoint.js` |
+| `devtrack-dataset` | `dataset` | `node dist/worker-entrypoint.js` |
+| `devtrack-maint` | `maintenance` | `node dist/worker-entrypoint.js` |
 
 ### 4. Required Environment Variables (Render Dashboard)
 

@@ -146,8 +146,23 @@ Powered by **BullMQ** on **Redis**. Workers run in separate processes (or contai
 | `api` | — (`ENABLE_WORKERS=false`) | HTTP + SSE only |
 | `worker-sync` | `sync` | Platform crawlers |
 | `worker-xp` | `xp` | Gamification |
-| `worker-orch` | `orch` | Orchestration compensation |
-| `worker-maint` | `maint` | Maintenance |
+| `worker-resume` | `resume-intelligence` | Resume consumers and profile rebuild |
+| `worker-dataset` | `dataset` | Dataset ingestion |
+| `worker-maint` | `maintenance` | Maintenance |
+
+The standalone dispatcher accepts exactly `sync`, `xp`, `maintenance`,
+`resume-intelligence`, `dataset`, and `all`. An unset or empty selector defaults to
+`all` for local development; production services must select an explicit role.
+Unknown values fail before loading service modules or connecting to databases.
+There is no standalone orchestration-compensation consumer: `orch` and
+`orchestration` are invalid selectors. The resume role groups existing consumers;
+it does not add a new orchestration engine. `all` is the union of the five roles.
+
+Backend `worker:*` scripts use the same dispatcher with a positional selector.
+An explicit positional selector takes precedence over `WORKER_TYPE`. Shutdown
+waits for startup to settle, drains registered consumers (including XP and Phase 4),
+then disconnects MongoDB and shared Redis. Partial startup failures also drain
+registered consumers and exit nonzero; cleanup continues if one close fails.
 
 Platform sync is **idempotent**: each external submission maps to `platform + externalId` to prevent duplicates.
 
@@ -236,6 +251,26 @@ React Router v7 with lazy-loaded pages and `ErrorBoundary` wrappers. Protected r
 16 service modules using `axiosClient` with Clerk token injection. Base URL from `VITE_API_BASE_URL`.
 
 ---
+
+### Settings write contract
+
+The authenticated settings GET endpoint returns stored preferences, while PUT
+currently accepts only `platforms` with `github`, `codeforces`, `leetcode` and
+`codechef` objects. Each accepts optional string `username` and `handle` fields
+limited to 100 characters; empty strings clear identifiers. The server rejects
+unknown categories, invalid values, empty writes and client-supplied metadata
+such as `lastSyncedAt`. Omitted fields remain unchanged.
+
+The settings screen sends only changed supported platform fields. It keeps drafts
+and saved values separately, uses per-field revisions to retain later edits during
+a write, blocks competing writes, and ignores stale loads or responses after a
+store reset. Failed saves preserve edits and stop automatic retries until a new
+edit or explicit Save Now. Discard restores the saved platform values locally.
+
+Theme uses the existing browser-local store independently of account saves.
+Other rendered settings and destructive actions are disabled until implemented;
+command-palette shortcuts cannot toggle unavailable settings. A stored preference
+in a GET response does not imply the current API supports editing or applying it.
 
 ## Platform Integrations
 
