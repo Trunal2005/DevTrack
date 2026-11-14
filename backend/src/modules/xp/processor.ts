@@ -82,6 +82,11 @@ async function applyXpEvent(payload: XpEventPayload, missionReward?: number): Pr
       sourceId,
       requestId,
     });
+    // Reconcile/repair UserAnalytics if it failed or was left behind
+    const analytics = await UserAnalytics.findOne({ userId: userObjId });
+    if (!analytics || analytics.totalXp < existingTransaction.newTotalXp) {
+      await repairUserAnalytics(userId);
+    }
     return {
       awarded: false,
       xpAwarded: 0,
@@ -152,7 +157,13 @@ async function applyXpEvent(payload: XpEventPayload, missionReward?: number): Pr
     if (!duplicate) throw error;
     return duplicateResult(duplicate);
   }
-  if (transition.duplicate) return transition;
+  if (transition.duplicate) {
+    const analytics = await UserAnalytics.findOne({ userId: userObjId });
+    if (!analytics || analytics.totalXp < transition.newTotalXp) {
+      await repairUserAnalytics(userId);
+    }
+    return transition;
+  }
   const { levelBefore, levelAfter, leveledUp, newTotalXp } = transition;
 
   // ── Step 7: Sync to UserAnalytics ────────────────────────────────────────
@@ -311,44 +322,51 @@ async function syncUserAnalytics(
   try {
     const userObjId = new Types.ObjectId(userId);
 
-    // Get DSA solve count from lifetime stats
+    // Get authoritative state from UserXp aggregate
     const userXp = await UserXp.findOne({ userId: userObjId });
+    const safeTotalXp = Math.max(totalXp, userXp?.totalXp ?? 0);
+    const safeCurrentLevel = Math.max(currentLevel, userXp?.currentLevel ?? 1);
     const dsaSolveCount = userXp?.lifetimeStats?.totalProblemsSolved ?? 0;
 
-    // Get weekly XP for history
     const weekStart = getWeekStart(new Date());
     const analytics = await UserAnalytics.findOne({ userId: userObjId });
 
-    let weeklyXPHistory = analytics?.weeklyXPHistory ?? [];
+    let weeklyXPHistory = analytics?.weeklyXPHistory ? [...analytics.weeklyXPHistory] : [];
 
-    // Weekly buckets accumulate this event's award, not the lifetime total.
+    // Query committed transactions for the current week to guarantee consistency under concurrent writes
+    const weekTransactions = await XpTransaction.find({
+      userId: userObjId,
+      createdAt: { $gte: weekStart },
+    });
+    const committedWeekXp = weekTransactions.reduce((sum, tx) => sum + tx.xpAwarded, 0);
+
     const weekIndex = weeklyXPHistory.findIndex(
       (w) => w.weekStart.getTime() === weekStart.getTime()
     );
 
     if (weekIndex >= 0) {
-      weeklyXPHistory[weekIndex].xp += xpAwarded;
+      weeklyXPHistory[weekIndex].xp = Math.max(weeklyXPHistory[weekIndex].xp + xpAwarded, committedWeekXp);
     } else {
-      weeklyXPHistory.push({ weekStart, xp: xpAwarded });
+      weeklyXPHistory.push({ weekStart, xp: Math.max(xpAwarded, committedWeekXp) });
     }
 
-    // Keep only last 12 weeks
     if (weeklyXPHistory.length > 12) {
       weeklyXPHistory = weeklyXPHistory
         .sort((a, b) => b.weekStart.getTime() - a.weekStart.getTime())
         .slice(0, 12);
     }
 
-    // Calculate weekly consistency score
     const activeWeeks = weeklyXPHistory.filter((w) => w.xp > 0).length;
     const weeklyConsistencyScore = Math.round((activeWeeks / 12) * 100);
 
     await UserAnalytics.findOneAndUpdate(
       { userId: userObjId },
       {
+        $max: {
+          totalXp: safeTotalXp,
+          currentLevel: safeCurrentLevel,
+        },
         $set: {
-          totalXp,
-          currentLevel,
           dsaSolveCount,
           weeklyXPHistory,
           weeklyConsistencyScore,
@@ -359,6 +377,65 @@ async function syncUserAnalytics(
     );
   } catch (err) {
     logger.warn('[xp] Failed to sync UserAnalytics', { error: err, userId });
+  }
+}
+
+async function repairUserAnalytics(userId: string): Promise<void> {
+  try {
+    const userObjId = new Types.ObjectId(userId);
+    const userXp = await UserXp.findOne({ userId: userObjId });
+    if (!userXp) return;
+
+    const existingAnalytics = await UserAnalytics.findOne({ userId: userObjId });
+    const transactions = await XpTransaction.find({ userId: userObjId }).sort({ createdAt: -1 });
+
+    const weekMap = new Map<number, { weekStart: Date; xp: number }>();
+    for (const tx of transactions) {
+      const ws = getWeekStart(new Date(tx.createdAt));
+      const key = ws.getTime();
+      const existing = weekMap.get(key);
+      if (existing) {
+        existing.xp += tx.xpAwarded;
+      } else {
+        weekMap.set(key, { weekStart: ws, xp: tx.xpAwarded });
+      }
+    }
+
+    if (existingAnalytics?.weeklyXPHistory) {
+      for (const bucket of existingAnalytics.weeklyXPHistory) {
+        const key = bucket.weekStart.getTime();
+        if (!weekMap.has(key)) {
+          weekMap.set(key, { weekStart: bucket.weekStart, xp: bucket.xp });
+        }
+      }
+    }
+
+    const weeklyXPHistory = Array.from(weekMap.values())
+      .sort((a, b) => b.weekStart.getTime() - a.weekStart.getTime())
+      .slice(0, 12);
+
+    const activeWeeks = weeklyXPHistory.filter((w) => w.xp > 0).length;
+    const weeklyConsistencyScore = Math.round((activeWeeks / 12) * 100);
+    const dsaSolveCount = userXp.lifetimeStats?.totalProblemsSolved ?? 0;
+
+    await UserAnalytics.findOneAndUpdate(
+      { userId: userObjId },
+      {
+        $max: {
+          totalXp: userXp.totalXp,
+          currentLevel: userXp.currentLevel,
+        },
+        $set: {
+          dsaSolveCount,
+          weeklyXPHistory,
+          weeklyConsistencyScore,
+          updatedAt: new Date(),
+        },
+      },
+      { upsert: true }
+    );
+  } catch (err) {
+    logger.warn('[xp] Failed to repair UserAnalytics', { error: err, userId });
   }
 }
 
