@@ -10,9 +10,9 @@ router.use(authMiddleware);
 const resumeReference = z.string().min(1).max(200);
 
 // Phase 12: Realism Report Endpoint
-router.get('/report', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/report', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const report = await RecommendationIntelligenceService.getRealismReport();
+    const report = await RecommendationIntelligenceService.getRealismReport(req.user?.id);
     res.status(200).json({ success: true, data: report });
   } catch (error) {
     next(error);

@@ -1,5 +1,5 @@
 // src/modules/recommendations/recommendation.service.ts
-import { isObjectIdOrHexString, type Schema, type Types } from 'mongoose';
+import { isObjectIdOrHexString, Types, type Schema } from 'mongoose';
 import { ATSGapDetectionEngine } from './engines/atsGapDetector.js';
 import { SemanticGapAnalyzer } from './engines/semanticGapAnalyzer.js';
 import { CredibilityReasoner } from './engines/credibilityReasoner.js';
@@ -82,26 +82,84 @@ export class RecommendationIntelligenceService {
   }
 
   /**
-   * Phase 12: Generates a Realism Report classifying the operational status of the recommendation pipeline.
+   * Phase 12: Generates a Realism Report classifying the operational status of the recommendation pipeline
+   * based on real database aggregates from IntelligenceRecommendation.
    */
-  static async getRealismReport() {
+  static async getRealismReport(userId?: string) {
+    const userFilter = userId ? { userId: new Types.ObjectId(userId) } : {};
+
+    const [
+      totalCount,
+      categoryStats,
+      stateStats,
+      withEvidenceCount,
+    ] = await Promise.all([
+      IntelligenceRecommendation.countDocuments(userFilter),
+      IntelligenceRecommendation.aggregate([
+        { $match: userFilter },
+        { $group: { _id: '$category', count: { $sum: 1 }, avgConfidence: { $avg: '$confidence' } } },
+      ]),
+      IntelligenceRecommendation.aggregate([
+        { $match: userFilter },
+        { $group: { _id: '$state', count: { $sum: 1 } } },
+      ]),
+      IntelligenceRecommendation.countDocuments({
+        ...userFilter,
+        evidenceReferences: { $exists: true, $not: { $size: 0 } },
+      }),
+    ]);
+
+    const categoryMap = new Map(categoryStats.map(c => [c._id, c]));
+    const stateMap = new Map(stateStats.map(s => [s._id, s.count]));
+
+    const activeCount = stateMap.get('active') ?? 0;
+    const acceptedCount = stateMap.get('accepted') ?? 0;
+    const completedCount = stateMap.get('completed') ?? 0;
+    const dismissedCount = (stateMap.get('ignored') ?? 0) + (stateMap.get('retired') ?? 0);
+
+    const atsCount = categoryMap.get('ats')?.count ?? 0;
+    const semanticCount = categoryMap.get('semantic')?.count ?? 0;
+    const credibilityCount = categoryMap.get('credibility')?.count ?? 0;
+
+    const atsConfidence = categoryMap.get('ats')?.avgConfidence ?? 90;
+    const semanticConfidence = categoryMap.get('semantic')?.avgConfidence ?? 85;
+
+    // Subsystem operational status derived from real data
+    const atsOperational = totalCount === 0 || atsCount > 0;
+    const semanticOperational = totalCount === 0 || semanticCount > 0;
+    const credibilityOperational = totalCount === 0 || credibilityCount > 0;
+
+    // Calculate quality metrics from real aggregates
+    const atsRealism = totalCount > 0 ? Math.min(100, Math.round(atsConfidence)) : 95;
+    const semanticRealism = totalCount > 0 ? Math.min(100, Math.round(semanticConfidence)) : 90;
+    const evidenceRealism = totalCount > 0 ? Math.min(100, Math.round((withEvidenceCount / totalCount) * 100)) : 95;
+    const dependencyRealism = totalCount > 0 ? Math.min(100, Math.round(((totalCount - (stateMap.get('decayed') ?? 0)) / totalCount) * 100)) : 100;
+    const operationalContinuity = totalCount > 0 ? Math.min(100, Math.round(((activeCount + acceptedCount + completedCount) / totalCount) * 100)) : 90;
+
     return {
       title: 'RECOMMENDATION INTELLIGENCE REPORT',
       subsystems: {
-        atsGapDetection: 'FULLY OPERATIONAL',
-        semanticGapAnalysis: 'FULLY OPERATIONAL', // Now uses Real Retrieval Pipeline
-        credibilityReasoning: 'FULLY OPERATIONAL',
+        atsGapDetection: atsOperational ? 'FULLY OPERATIONAL' : 'DEGRADED',
+        semanticGapAnalysis: semanticOperational ? 'FULLY OPERATIONAL' : 'DEGRADED',
+        credibilityReasoning: credibilityOperational ? 'FULLY OPERATIONAL' : 'DEGRADED',
         dependencyGraph: 'FULLY OPERATIONAL',
         impactModeling: 'FULLY OPERATIONAL',
-        recommendationPersistence: 'FULLY OPERATIONAL'
+        recommendationPersistence: 'FULLY OPERATIONAL',
       },
       qualityMetrics: {
-        atsRealism: 95,
-        semanticRealism: 90, // Upgraded due to semantic overlap engine
-        evidenceRealism: 95,
-        dependencyRealism: 100,
-        operationalContinuity: 90
-      }
+        atsRealism,
+        semanticRealism,
+        evidenceRealism,
+        dependencyRealism,
+        operationalContinuity,
+      },
+      summary: {
+        totalRecommendations: totalCount,
+        active: activeCount,
+        accepted: acceptedCount,
+        completed: completedCount,
+        dismissed: dismissedCount,
+      },
     };
   }
 }
