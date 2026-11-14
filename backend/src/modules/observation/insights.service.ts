@@ -1,6 +1,6 @@
 // src/modules/observation/insights.service.ts — Heuristic AI Insights Engine
 import { Types } from 'mongoose';
-import { UserXp, UserStreakLog, DsaTopicProgress, ActivityEvent, DailyActivity } from '../../db/models/index.js';
+import { UserXp, UserStreakLog, DsaTopicProgress, ActivityEvent, DailyActivity, XpTransaction } from '../../db/models/index.js';
 import { logger } from '../../shared/logger.js';
 
 export interface HeuristicInsight {
@@ -74,15 +74,21 @@ export class InsightsService {
     const last7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const prev7d = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
-    const [last7dActivities, prev7dActivities] = await Promise.all([
+    const [last7dActivities, prev7dActivities, last7dXpTxs, prev7dXpTxs] = await Promise.all([
       DailyActivity.find({ userId: userObjId, date: { $gte: last7d } }).lean(),
       DailyActivity.find({ userId: userObjId, date: { $gte: prev7d, $lt: last7d } }).lean(),
+      XpTransaction.find({ userId: userObjId, createdAt: { $gte: last7d } }).select('xpAwarded').lean(),
+      XpTransaction.find({ userId: userObjId, createdAt: { $gte: prev7d, $lt: last7d } }).select('xpAwarded').lean(),
     ]);
 
-    const last7dXp = last7dActivities.reduce((sum, a) => sum + (a.count || 0), 0);
-    const prev7dXp = prev7dActivities.reduce((sum, a) => sum + (a.count || 0), 0);
+    const last7dXp = last7dXpTxs.reduce((sum, tx) => sum + (tx.xpAwarded || 0), 0);
+    const prev7dXp = prev7dXpTxs.reduce((sum, tx) => sum + (tx.xpAwarded || 0), 0);
 
     const xpDelta = prev7dXp > 0 ? ((last7dXp - prev7dXp) / prev7dXp) * 100 : last7dXp > 0 ? 100 : 0;
+
+    const last7dActiveDays = last7dActivities.filter(a => a.count > 0).length;
+    const prev7dActiveDays = prev7dActivities.filter(a => a.count > 0).length;
+    const activeDaysDelta = last7dActiveDays - prev7dActiveDays;
     
     let status: 'surging' | 'stable' | 'waning' = 'stable';
     let message = 'Your activity is steady. Keep it up!';
@@ -95,7 +101,7 @@ export class InsightsService {
       message = `Consistency alert: Your activity dropped by ${Math.abs(Math.round(xpDelta))}% recently.`;
     }
 
-    return { status, xpDelta, activeDaysDelta: 0, message };
+    return { status, xpDelta, activeDaysDelta, message };
   }
 
   private async calculateWeaknesses(userId: string): Promise<Array<{ topic: string; solveRate: number; difficulty: string }>> {
