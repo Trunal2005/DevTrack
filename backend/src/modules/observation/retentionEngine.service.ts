@@ -16,6 +16,8 @@ import {
   PlatformStats,
 } from '../../db/models/index.js';
 import { logger } from '../../shared/logger.js';
+import { getUserTimezone } from '../../shared/userTimezone.js';
+import { localDateString, localDayBounds } from '../../shared/date.js';
 import type { MomentumScore } from './momentumEngine.service.js';
 
 // ---------------------------------------------------------------------------
@@ -105,9 +107,9 @@ export class RetentionEngine {
     const currentStreak = analytics?.currentStreak ?? 0;
     const bestStreak = analytics?.bestStreak ?? 0;
     const lastActiveDate = analytics?.lastActiveDate ?? null;
-    const currentXp = (userXp as any)?.totalXp ?? 0;
-    const currentLevel = (userXp as any)?.level ?? 1;
-    const xpToNextLevel = (userXp as any)?.xpToNextLevel ?? 100;
+    const currentXp = userXp?.totalXp ?? 0;
+    const currentLevel = userXp?.currentLevel ?? 1;
+    const xpToNextLevel = userXp?.xpToNextLevel ?? 100;
 
     // Determine user state
     const userState = this.determineUserState(lastActiveDate, currentStreak, recentActivity.activeDays7d);
@@ -121,7 +123,7 @@ export class RetentionEngine {
       nearLevelUp,
       motivationalMessage,
     ] = await Promise.all([
-      this.calculateStreakPressure(currentStreak, lastActiveDate, bestStreak),
+      this.calculateStreakPressure(userId, currentStreak, lastActiveDate, bestStreak),
       this.generateRecoveryMission(userState, currentStreak, momentumScore),
       this.checkComebackReward(lastActiveDate),
       this.detectMilestoneAnticipation(userId, currentStreak, currentLevel),
@@ -162,20 +164,21 @@ export class RetentionEngine {
   // ─── Streak Pressure ───────────────────────────────────────────────────
 
   private async calculateStreakPressure(
+    userId: string,
     currentStreak: number,
     lastActiveDate: Date | null,
     bestStreak: number
   ): Promise<StreakPressure | null> {
     if (currentStreak === 0) return null;
 
+    const timezone = await getUserTimezone(userId);
     const now = new Date();
-    const endOfDay = new Date(now);
-    endOfDay.setHours(23, 59, 59, 999);
+    const todayStr = localDateString(now, timezone);
+    const { end: endOfDay } = localDayBounds(todayStr, timezone);
     const hoursRemaining = Math.max(0, Math.round((endOfDay.getTime() - now.getTime()) / (1000 * 60 * 60)));
 
-    // Check if today's activity has been recorded
-    const todayStr = new Date().toISOString().split('T')[0];
-    const lastActiveDateStr = lastActiveDate ? new Date(lastActiveDate).toISOString().split('T')[0] : '';
+    // Check if today's activity has been recorded in the user's timezone
+    const lastActiveDateStr = lastActiveDate ? localDateString(new Date(lastActiveDate), timezone) : '';
     const isActiveToday = todayStr === lastActiveDateStr;
 
     if (isActiveToday) {
