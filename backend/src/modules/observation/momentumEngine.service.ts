@@ -15,6 +15,7 @@ import {
   DsaTopicProgress,
   UserAnalytics,
   UserXp,
+  XpTransaction,
   UserStreakLog,
   PlatformStats,
 } from '../../db/models/index.js';
@@ -156,12 +157,16 @@ export class MomentumEngine {
     const [
       recentActivities,
       prevActivities,
+      recentXpTxs,
+      prevXpTxs,
       analytics,
       recentEvents,
       focusSessions,
     ] = await Promise.all([
       DailyActivity.find({ userId: userObjId, date: { $gte: last7d } }).lean(),
       DailyActivity.find({ userId: userObjId, date: { $gte: last14d, $lt: last7d } }).lean(),
+      XpTransaction.find({ userId: userObjId, createdAt: { $gte: last7d } }).select('xpAwarded').lean(),
+      XpTransaction.find({ userId: userObjId, createdAt: { $gte: last14d, $lt: last7d } }).select('xpAwarded').lean(),
       UserAnalytics.findOne({ userId: userObjId }).lean(),
       ActivityEvent.find({ userId: userObjId, occurredAt: { $gte: last7d } }).lean(),
       ActivityEvent.find({
@@ -176,8 +181,8 @@ export class MomentumEngine {
     const activityFrequency = Math.min(100, Math.round((activeDays / 7) * 100));
 
     // 2. XP Velocity (0–100): compare 7d XP to previous 7d
-    const recentXp = recentActivities.reduce((s, a) => s + (a.count || 0), 0);
-    const prevXp = prevActivities.reduce((s, a) => s + (a.count || 0), 0);
+    const recentXp = recentXpTxs.reduce((s, tx) => s + (tx.xpAwarded || 0), 0);
+    const prevXp = prevXpTxs.reduce((s, tx) => s + (tx.xpAwarded || 0), 0);
     const xpGrowth = prevXp > 0 ? ((recentXp - prevXp) / prevXp) : (recentXp > 0 ? 1 : 0);
     const xpVelocity = Math.min(100, Math.max(0, Math.round(50 + xpGrowth * 50)));
 
