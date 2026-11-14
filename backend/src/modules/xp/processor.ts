@@ -82,6 +82,7 @@ async function applyXpEvent(payload: XpEventPayload, missionReward?: number): Pr
       sourceId,
       requestId,
     });
+    await reconcileUserAnalytics(userId, existingTransaction.newTotalXp, existingTransaction.levelAfter);
     return {
       awarded: false,
       xpAwarded: 0,
@@ -150,13 +151,21 @@ async function applyXpEvent(payload: XpEventPayload, missionReward?: number): Pr
     // including its aggregate increment. Return only a committed matching row.
     const duplicate = await XpTransaction.findOne({ userId: userObjId, sourceType, sourceId });
     if (!duplicate) throw error;
+    await reconcileUserAnalytics(userId, duplicate.newTotalXp, duplicate.levelAfter);
     return duplicateResult(duplicate);
   }
-  if (transition.duplicate) return transition;
+  if (transition.duplicate) {
+    await reconcileUserAnalytics(userId, transition.newTotalXp, transition.levelAfter);
+    return transition;
+  }
   const { levelBefore, levelAfter, leveledUp, newTotalXp } = transition;
 
   // ── Step 7: Sync to UserAnalytics ────────────────────────────────────────
-  await syncUserAnalytics(userId, newTotalXp, xpAwarded, levelAfter, sourceType);
+  try {
+    await syncUserAnalytics(userId, newTotalXp, xpAwarded, levelAfter, sourceType);
+  } catch (err) {
+    logger.warn('[xp] Post-commit UserAnalytics sync failed (repairable on replay)', { error: err, userId });
+  }
 
   // ── Step 8: Cache invalidation ───────────────────────────────────────────
   try {
@@ -299,66 +308,144 @@ export async function getUserXp(userId: string): Promise<{
   };
 }
 
-// ─── UserAnalytics sync ───────────────────────────────────────────────────
+// ─── UserAnalytics sync & reconciliation ────────────────────────────────────
 
-async function syncUserAnalytics(
+export async function syncUserAnalytics(
   userId: string,
   totalXp: number,
   xpAwarded: number,
   currentLevel: number,
   sourceType: XpSourceType
 ): Promise<void> {
-  try {
-    const userObjId = new Types.ObjectId(userId);
+  const userObjId = new Types.ObjectId(userId);
 
-    // Get DSA solve count from lifetime stats
-    const userXp = await UserXp.findOne({ userId: userObjId });
-    const dsaSolveCount = userXp?.lifetimeStats?.totalProblemsSolved ?? 0;
+  // Get DSA solve count and latest aggregate stats from UserXp
+  const userXp = await UserXp.findOne({ userId: userObjId });
+  const dsaSolveCount = userXp?.lifetimeStats?.totalProblemsSolved ?? 0;
+  const effectiveTotalXp = Math.max(totalXp, userXp?.totalXp ?? totalXp);
+  const effectiveCurrentLevel = Math.max(currentLevel, userXp?.currentLevel ?? currentLevel);
 
-    // Get weekly XP for history
-    const weekStart = getWeekStart(new Date());
-    const analytics = await UserAnalytics.findOne({ userId: userObjId });
+  // Get weekly XP for history
+  const weekStart = getWeekStart(new Date());
 
-    let weeklyXPHistory = analytics?.weeklyXPHistory ?? [];
+  // 1. Ensure UserAnalytics document exists
+  await UserAnalytics.updateOne(
+    { userId: userObjId },
+    {
+      $setOnInsert: {
+        userId: userObjId,
+        currentStreak: 0,
+        bestStreak: 0,
+        currentStreakType: null,
+        lastActiveDate: null,
+        streakFreezeUntil: null,
+        totalXp: 0,
+        currentLevel: 1,
+        dsaSolveCount: 0,
+        weeklyConsistencyScore: 0,
+        weeklyXPHistory: [],
+      },
+    },
+    { upsert: true }
+  );
 
-    // Weekly buckets accumulate this event's award, not the lifetime total.
-    const weekIndex = weeklyXPHistory.findIndex(
-      (w) => w.weekStart.getTime() === weekStart.getTime()
+  // 2. Try atomic increment of existing week bucket using findOneAndUpdate
+  let updated = await UserAnalytics.findOneAndUpdate(
+    { userId: userObjId, 'weeklyXPHistory.weekStart': weekStart },
+    {
+      $inc: { 'weeklyXPHistory.$.xp': xpAwarded },
+      $max: {
+        totalXp: effectiveTotalXp,
+        currentLevel: effectiveCurrentLevel,
+        dsaSolveCount,
+      },
+      $set: { updatedAt: new Date() },
+    },
+    { new: true }
+  );
+
+  // 3. If weekStart is not yet present, push the new week bucket atomically
+  if (!updated) {
+    updated = await UserAnalytics.findOneAndUpdate(
+      { userId: userObjId, 'weeklyXPHistory.weekStart': { $ne: weekStart } },
+      {
+        $push: {
+          weeklyXPHistory: { weekStart, xp: xpAwarded },
+        },
+        $max: {
+          totalXp: effectiveTotalXp,
+          currentLevel: effectiveCurrentLevel,
+          dsaSolveCount,
+        },
+        $set: { updatedAt: new Date() },
+      },
+      { new: true }
     );
 
-    if (weekIndex >= 0) {
-      weeklyXPHistory[weekIndex].xp += xpAwarded;
-    } else {
-      weeklyXPHistory.push({ weekStart, xp: xpAwarded });
+    // Concurrency fallback: if another write created weekStart in parallel
+    if (!updated) {
+      updated = await UserAnalytics.findOneAndUpdate(
+        { userId: userObjId, 'weeklyXPHistory.weekStart': weekStart },
+        {
+          $inc: { 'weeklyXPHistory.$.xp': xpAwarded },
+          $max: {
+            totalXp: effectiveTotalXp,
+            currentLevel: effectiveCurrentLevel,
+            dsaSolveCount,
+          },
+          $set: { updatedAt: new Date() },
+        },
+        { new: true }
+      );
     }
+  }
 
-    // Keep only last 12 weeks
-    if (weeklyXPHistory.length > 12) {
-      weeklyXPHistory = weeklyXPHistory
+  // 4. Update 12-week retention and consistency score from the latest weeklyXPHistory
+  if (updated?.weeklyXPHistory) {
+    let history = updated.weeklyXPHistory;
+    if (history.length > 12) {
+      history = [...history]
         .sort((a, b) => b.weekStart.getTime() - a.weekStart.getTime())
         .slice(0, 12);
+      await UserAnalytics.updateOne(
+        { userId: userObjId },
+        { $set: { weeklyXPHistory: history } }
+      );
+    }
+    const activeWeeks = history.filter((w) => w.xp > 0).length;
+    const weeklyConsistencyScore = Math.round((activeWeeks / 12) * 100);
+    await UserAnalytics.updateOne(
+      { userId: userObjId },
+      { $set: { weeklyConsistencyScore } }
+    );
+  }
+}
+
+export async function reconcileUserAnalytics(
+  userId: string,
+  targetXp: number,
+  targetLevel: number
+): Promise<void> {
+  try {
+    const userObjId = new Types.ObjectId(userId);
+    const analytics = await UserAnalytics.findOne({ userId: userObjId });
+    const currentXp = analytics?.totalXp ?? 0;
+
+    // Check if UserAnalytics is already up-to-date with this award or higher
+    if (analytics && currentXp >= targetXp) {
+      return;
     }
 
-    // Calculate weekly consistency score
-    const activeWeeks = weeklyXPHistory.filter((w) => w.xp > 0).length;
-    const weeklyConsistencyScore = Math.round((activeWeeks / 12) * 100);
+    const userXp = await UserXp.findOne({ userId: userObjId });
+    const effectiveTargetXp = Math.max(targetXp, userXp?.totalXp ?? targetXp);
+    const effectiveLevel = Math.max(targetLevel, userXp?.currentLevel ?? targetLevel);
+    const missingXp = effectiveTargetXp - currentXp;
 
-    await UserAnalytics.findOneAndUpdate(
-      { userId: userObjId },
-      {
-        $set: {
-          totalXp,
-          currentLevel,
-          dsaSolveCount,
-          weeklyXPHistory,
-          weeklyConsistencyScore,
-          updatedAt: new Date(),
-        },
-      },
-      { upsert: true }
-    );
+    if (missingXp > 0) {
+      await syncUserAnalytics(userId, effectiveTargetXp, missingXp, effectiveLevel, 'manual');
+    }
   } catch (err) {
-    logger.warn('[xp] Failed to sync UserAnalytics', { error: err, userId });
+    logger.warn('[xp] Failed to reconcile UserAnalytics on replay', { error: err, userId });
   }
 }
 
