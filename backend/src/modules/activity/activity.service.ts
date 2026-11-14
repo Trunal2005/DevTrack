@@ -1,6 +1,6 @@
 // src/modules/activity/activity.service.ts
 import { cacheManager } from '../../shared/cache/cacheManager.js';
-import { Types } from 'mongoose';
+import { Types, type ClientSession } from 'mongoose';
 import { ActivityEvent, DailyActivity } from '../../db/models/index.js';
 import type { ApiActivityHeatmapResponse, ApiActivityFeedResponse, ApiActivityFilters, ApiActivityEntry, ApiActivitySummary } from '../../types/api.types.js';
 import { getDateRangeForYear, formatISODate, getStartOfDay, getLast365Days, calculateStreaks } from '../../shared/date.js';
@@ -289,11 +289,158 @@ async function upsertDailyActivityAtomic(
   }
 }
 
-export async function deleteActivity(userId: string, activityId: string): Promise<boolean> {
-  const result = await ActivityEvent.deleteOne({
-    _id: new Types.ObjectId(activityId),
-    userId: new Types.ObjectId(userId),
+/**
+ * Atomically decrements daily activity count and type counter upon activity deletion.
+ * Removes the daily record if total count reaches zero, and removes the type entry
+ * if its count drops to zero or below, keeping daily activities bounded and accurate.
+ */
+async function decrementDailyActivityAtomic(
+  userId: Types.ObjectId,
+  dateKey: Date,
+  activityType: string,
+  session?: ClientSession | null
+): Promise<void> {
+  const filter = { userId, date: dateKey };
+  const updatePipeline = [
+    {
+      $set: {
+        count: {
+          $max: [0, { $subtract: [{ $ifNull: ['$count', 0] }, 1] }],
+        },
+        activities: {
+          $let: {
+            vars: {
+              existing: {
+                $filter: {
+                  input: { $ifNull: ['$activities', []] },
+                  cond: { $eq: ['$$this.type', activityType] },
+                },
+              },
+              others: {
+                $filter: {
+                  input: { $ifNull: ['$activities', []] },
+                  cond: { $ne: ['$$this.type', activityType] },
+                },
+              },
+            },
+            in: {
+              $let: {
+                vars: {
+                  existingTotal: {
+                    $reduce: {
+                      input: '$$existing',
+                      initialValue: 0,
+                      in: { $add: ['$$value', '$$this.count'] },
+                    },
+                  },
+                },
+                in: {
+                  $cond: [
+                    { $gt: ['$$existingTotal', 1] },
+                    {
+                      $concatArrays: [
+                        '$$others',
+                        [
+                          {
+                            type: activityType,
+                            count: { $subtract: ['$$existingTotal', 1] },
+                          },
+                        ],
+                      ],
+                    },
+                    '$$others',
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  ];
+
+  const updated = await DailyActivity.findOneAndUpdate(filter, updatePipeline, {
+    new: true,
+    ...(session ? { session } : {}),
   });
-  if (result.deletedCount > 0) await cacheManager.invalidateDashboard(userId);
-  return result.deletedCount > 0;
+
+  if (updated && updated.count <= 0) {
+    await DailyActivity.deleteOne({ _id: updated._id }, { ...(session ? { session } : {}) });
+  }
+}
+
+export async function deleteActivity(userId: string, activityId: string): Promise<boolean> {
+  const userObjId = new Types.ObjectId(userId);
+  const activityObjId = new Types.ObjectId(activityId);
+
+  let deletedEvent: { occurredAt: Date; type: string } | null = null;
+
+  try {
+    if (typeof ActivityEvent.db?.transaction === 'function') {
+      try {
+        await ActivityEvent.db.transaction(async (session) => {
+          const event = await ActivityEvent.findOneAndDelete(
+            { _id: activityObjId, userId: userObjId },
+            { session }
+          ).lean();
+
+          if (!event) return;
+
+          deletedEvent = {
+            occurredAt: event.occurredAt,
+            type: event.type,
+          };
+
+          const dateKey = getStartOfDay(event.occurredAt);
+          await decrementDailyActivityAtomic(userObjId, dateKey, event.type, session);
+        });
+      } catch (txErr: any) {
+        if (txErr?.message?.includes('replica set') || txErr?.message?.includes('Transaction numbers')) {
+          const event = await ActivityEvent.findOneAndDelete({
+            _id: activityObjId,
+            userId: userObjId,
+          }).lean();
+
+          if (!event) return false;
+
+          deletedEvent = {
+            occurredAt: event.occurredAt,
+            type: event.type,
+          };
+
+          const dateKey = getStartOfDay(event.occurredAt);
+          await decrementDailyActivityAtomic(userObjId, dateKey, event.type);
+        } else {
+          throw txErr;
+        }
+      }
+    } else {
+      const event = await ActivityEvent.findOneAndDelete({
+        _id: activityObjId,
+        userId: userObjId,
+      }).lean();
+
+      if (!event) return false;
+
+      deletedEvent = {
+        occurredAt: event.occurredAt,
+        type: event.type,
+      };
+
+      const dateKey = getStartOfDay(event.occurredAt);
+      await decrementDailyActivityAtomic(userObjId, dateKey, event.type);
+    }
+  } catch (error) {
+    logger.error('Failed to delete activity atomically', {
+      activityId,
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+
+  if (!deletedEvent) return false;
+
+  await cacheManager.invalidateDashboard(userId);
+  return true;
 }
